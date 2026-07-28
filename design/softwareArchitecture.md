@@ -6,7 +6,7 @@
 | Project | `wire-encoder-modbus-interface` firmware |
 | Date | 2026-07-28 |
 | Status | **Inherited baseline, adopted as-is for the Modbus/platform half; the measurement half is a plan.** The zero-ISR super-loop, the module split and the sizing method come from the sibling `windmeters-modbus-interface` project, where they are implemented and HIL-verified on the same MCU. Everything below marked *planned* has not been built here. |
-| Related docs | `design/TDS.md` v0.2 (requirements this design satisfies), `design/driverDevelopment.md` (the encoder driver is written against this architecture), `design/integrationPlan.md`, `design/scratchBook.md`; sibling project's `design/softwareArchitecture.md` (the source of §1, §3, §4) |
+| Related docs | `design/TDS.md` v0.4 (requirements this design satisfies), `design/driverDevelopment.md` (the encoder driver is written against this architecture), `design/integrationPlan.md`, `design/scratchBook.md`; sibling project's `design/softwareArchitecture.md` (the source of §1, §3, §4) |
 
 ## 1. Scope and constraints
 
@@ -16,10 +16,12 @@ potentiometer on PA2 (TDS §1.1).
 
 **One build.** Unlike the sibling project, which compiles three sensor
 variants from one tree, there is one sensor read one way — so there is no
-build selector and no capability macro for the measurement path. Two
-compile-time options remain, both off by default and neither a product
-variant: `HAVE_END_SWITCH` (the optional PC1 input, §3) and `TEST_HOOKS`
-(bench-only).
+build selector and no capability macro. The only compile-time option is
+`TEST_HOOKS` (bench-only), off by default.
+
+**One ADC, two channels.** The wiper is channel 0 on PA2; the two
+end-of-travel switches share channel 2 on PC4 through a supervised resistor
+ladder (TDS §4.4). The switches are part of the product, not an option.
 
 Given these constraints and the TDS requirements, the architecture is
 **zero-interrupt: a cooperative super-loop polls everything.** No RTOS —
@@ -47,7 +49,7 @@ it would cost more RAM than the application uses and buys nothing here.
 │   opening_service();     // PLANNED: 16-conversion ADC      │
 │                          // burst, scale, publish on        │
 │                          // window close                    │
-│   diagnostics_service(); // uptime, counters, switch        │
+│   diagnostics_service(); // uptime, counters                 │
 │   IWDG_refresh();        // only here (FR-S20)              │
 │ }                                                           │
 └─────────────────────────────────────────────────────────────┘
@@ -57,9 +59,9 @@ it would cost more RAM than the application uses and buys nothing here.
 ```
 
 Initialization before the loop follows the FR-S18 order strictly:
-PC2/DE low first → PC4 address latch (and the optional PC1 switch input) →
-sensor front-end ready (ADC self-calibration) → IWDG on → USART1 receiver
-enabled last.
+PC2/DE low first → PC1 address latch → sensor front-end ready (one ADC
+self-calibration covering both channels) → IWDG on → USART1 receiver enabled
+last.
 
 **Current state:** `main.c`, `board.c`, `regs.c`, `persist.c` and the `mb`
 driver are in the tree and build. `opening_service()` does not exist yet —
@@ -106,10 +108,10 @@ FR-E10 rate estimate), but a missed window costs one sample, not a
 reference.
 
 **Nothing in this firmware blocks for long.** The ADC burst — 16
-conversions at the ≥71-cycle sample time — totals well under 1 ms, and the
-optional end-switch debounce (FR-E15) is a comparison against a SysTick
-stamp, not a delay: a candidate level simply has to survive 20 ms of
-main-loop passes. The only meaningful blocking operations are the ~33 ms
+conversions at the ≥71-cycle sample time, plus one on the switch ladder —
+totals well under 1 ms, and the FR-E15 switch debounce is a comparison
+against a SysTick stamp, not a delay: a candidate state simply has to survive
+20 ms of calls. The only meaningful blocking operations are the ~33 ms
 response TX and the ~6 ms flash commit, both inherited, both deliberately
 outside the FR-MB20/21 latency path or well inside it. This is worth stating
 because it is what a future feature must not break.
@@ -140,24 +142,24 @@ project's measured typical case, and this firmware's loop is strictly
 lighter. Meets FR-MB21's 95%-within-15 ms with margin, and FR-MB20's 100 ms
 hard limit trivially.
 
-**As-built (skeleton, 2026-07-28):** release build 3 572 B flash / 616 B
-RAM; with the end-switch option 3 720 B / 624 B. Both a quarter of the flash
-ceiling and a third of the RAM ceiling, so the measurement service and the
-averaging engine have ample room. Record the release numbers here when they
-land.
+**As-built (skeleton, 2026-07-28):** release build 3 568 B flash / 616 B
+RAM — a quarter of the flash ceiling and a third of the RAM ceiling, so the
+measurement service and the averaging engine have ample room. Record the
+release numbers here when they land.
 
 ## 6. Module split
 
 | Module | Contents | State |
 |---|---|---|
 | `main.c` | The super-loop and window pacing | **in tree** (no measurement call yet) |
-| `board.c` | Clocks, GPIO, FR-S18 init order, PC4 address latch, IWDG + PVD, optional PC1 switch input | **in tree**, inherited |
+| `board.c` | Clocks, GPIO, FR-S18 init order, PC1 address latch, IWDG + PVD | **in tree**, inherited |
 | `sensors.h` | Build-type byte and the raw full-scale default; no variant selector | **in tree** |
 | `mb.c` | Framing, CRC, FC dispatch, exceptions, DE control + remap-switching line discipline — referenced in place from `software/drivers/modbus_rtu` | **in tree**, inherited, HIL-verified in the sibling project |
-| `regs.c` | Register image + table-driven `{addr, min, max}` validator — FR-MB19/22/28 become one code path; the FR-S31 + FR-E06 cross-validate hook; persist load/save wiring; the FR-E15 switch debounce | **in tree** |
+| `regs.c` | Register image + table-driven `{addr, min, max}` validator — FR-MB19/22/28 become one code path; the FR-S31 + FR-E06 cross-validate hook; persist load/save wiring; the §4.4 ladder band decode + FR-E15 debounce | **in tree** |
+| `scale.c` | FR-E04 two-point opening scaling — direction-agnostic, clamped both ends, tight overflow bound. Deliberately hardware-free so the host test in `software/firmware/test/` exercises the shipped code | **in tree**, host-tested |
 | `persist.c` | FR-S39 holding-register persistence — two-page flash ping-pong, power-loss atomic | **in tree**, inherited |
 | `meas_open.c` | Window pacing, FR-E04 scaling, FR-E07 fault machine, FR-E10 movement rate | **planned** (integration stage D) |
-| `we.c` | Raw-code acquisition: 16-conversion ratiometric ADC burst with float detection — to be referenced in place from `software/drivers/wire_encoder` | **planned** (driver phase 1) |
+| `we.c` | Raw-code acquisition: 16-conversion ratiometric ADC burst on the wiper with float detection, plus the PC4 ladder channel — to be referenced in place from `software/drivers/wire_encoder` | **planned** (driver phase 1) |
 | `avg.c` | Boxcar/two-stage averaging + FR-E08 min/max tracking (FR-S31) | **planned** (integration stage E) |
 | `debug_uart.c` | PD6 TX-only tracing (driver phases only; absent from release builds) | **in tree**, inherited |
 

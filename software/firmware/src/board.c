@@ -15,23 +15,22 @@ void board_init_early(void)
 	funPinMode(PC2, GPIO_Speed_10MHz | GPIO_CNF_OUT_PP);
 	funDigitalWrite(PC2, FUN_LOW);
 
-	// FR-S18 (2) + FR-S03: PC4 solder jumper, internal pull-up. Open =
+	// FR-S18 (2) + FR-S03: PC1 solder jumper, internal pull-up. Open =
 	// reads high = base address; bridged to GND = base + 5. Latched once;
 	// runtime changes have no effect until reset (FR-MB07).
-	funPinMode(PC4, GPIO_CNF_IN_PUPD);
-	funDigitalWrite(PC4, FUN_HIGH);
-	Delay_Us(50);
-	mb_address = (uint8_t)(BOARD_MB_BASE_ADDRESS +
-	                       (funDigitalRead(PC4) ? 0 : 5));
-
-#ifdef HAVE_END_SWITCH
-	// FR-E14 (optional): PC1 — the one spare pin on this package (TDS §4.2)
-	// — as an input with an internal pull-up, so a switch closing to GND
-	// reads low/active. Both end switches share this input; which end was
-	// reached follows from the measured opening.
+	//
+	// PC1, not PC4 (TDS §4.2): PC4 has an ADC channel and PC1 does not, so
+	// the analog pin is spent on the supervised end-switch ladder and this
+	// one-bit boot-time read takes the digital pin.
 	funPinMode(PC1, GPIO_CNF_IN_PUPD);
 	funDigitalWrite(PC1, FUN_HIGH);
-#endif
+	Delay_Us(50);
+	mb_address = (uint8_t)(BOARD_MB_BASE_ADDRESS +
+	                       (funDigitalRead(PC1) ? 0 : 5));
+
+	// The end-switch ladder on PC4 is an ANALOG input and is brought up with
+	// the wiper by the encoder driver (we_init, FR-S18 step 3) — the ADC has
+	// one owner. Nothing to do for it here.
 
 	// FR-S22: PVD at the lowest threshold so the nominal rail (3.1–3.3 V)
 	// never trips it; a real sag flips PVDO and the main loop stops
@@ -73,13 +72,3 @@ bool board_power_ok(void)
 {
 	return (PWR->CSR & PWR_CSR_PVDO) == 0;
 }
-
-#ifdef HAVE_END_SWITCH
-bool board_end_switch_active(void)
-{
-	// Active low: pulled up internally, switch closes to GND (FR-E14).
-	// Raw read — the FR-E15 debounce lives in regs_service, so this stays a
-	// pure GPIO accessor and the timing policy stays in one place.
-	return funDigitalRead(PC1) == 0;
-}
-#endif

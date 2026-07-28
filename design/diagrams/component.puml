@@ -12,31 +12,30 @@ skinparam component {
 
 ' ---- external nodes ----
 actor "Modbus master\n(RS-485)" as master
-component "draw-wire encoder\n10 kΩ pot / PA2 ADC" as enc #FFFFFF
-component "end switches\n(optional) / PC1" as sw #FFFFFF
+component "draw-wire encoder\n10 kΩ pot → PA2 (ADC ch0)" as enc #FFFFFF
+component "end switches\nsupervised ladder → PC4 (ADC ch2)" as sw #FFFFFF
 
 ' ---- orchestration & platform (cross-cutting) ----
 component "main\nzero-ISR super-loop" as main #EAEFEF
-component "board\nIWDG · PVD · address · PC1" as board #EAEFEF
+component "board\nIWDG · PVD · address jumper (PC1)" as board #EAEFEF
 
 ' ---- Modbus + register hub ----
 component "mb\nModbus RTU driver (USART1/PD6)" as mb
-component "regs\nregister image (hub)" as regs #DCEBE9
+component "regs\nregister image (hub)\n+ ladder band decode" as regs #DCEBE9
 
 ' ---- measurement pipeline (NOT YET IMPLEMENTED) ----
 component "meas_open\nwindow · scale · fault" as mo #FFF4E0
-component "we\nADC burst + float detect" as we #FFF4E0
+component "we\nowns the ADC:\nwiper burst + float detect,\nladder channel" as we #FFF4E0
 
 ' ---- helpers / storage ----
 component "avg\nboxcar mean + min/max" as avg #FFF4E0
 component "persist\nflash store · FR-S39" as persist
 
 ' ==== data flow (sensor → bus) ====
-enc --> we   : PA2 wiper (ratiometric)
-we  --> mo   : raw code / validity
-mo  --> regs : publish_opening\n(30001–30005, 30012)
-sw  --> board : switch closure
-board --> regs : debounced state\n-> status bit 3 (FR-E14/E15)
+enc --> we   : wiper (ratiometric)
+sw  --> we   : ladder level
+we  --> mo   : raw code / validity\n+ ladder raw
+mo  --> regs : publish_opening (30001–30005, 30012)\npublish_switches -> status bits 3/4
 regs <--> mb : regs_cfg:\nholdings · input_read · FR-S31 + FR-E06
 mb  <--> master : RTU frames\nFC03/04/06/16
 
@@ -56,6 +55,7 @@ legend right
   dotted = control
   regs is the central register hub
   ORANGE = planned, not yet implemented
-  end switches are an OPTIONAL build feature
+  ONE ADC, two channels: wiper + switch ladder
+  the two front-ends fault independently (FR-E16)
 endlegend
 @enduml

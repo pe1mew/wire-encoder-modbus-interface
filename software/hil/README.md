@@ -50,7 +50,7 @@ flash (`pio`) → stimulate (ADALM2000 / libm2k) → observe (Saleae Logic 2 MCP
 | `we_check.py` | Encoder driver phase-1 matrix (`driverDevelopment.md` §3.3) — divider-fed linearity, stability, fault rows | **to be written** |
 | `mb_check.py` | Modbus RTU protocol matrix (TDS §2) against this register map | **to be written** — port from the source project and retarget the addresses |
 | `regs_check.py` | Full TDS §2.7/§2.8 register read/write matrix | **to be written** |
-| `endswitch_check.py` | FR-E14/E15 rows (status bit 3, 20 ms debounce) — only for the `encoder_endswitch` build | **to be written**, optional |
+| `endswitch_check.py` | FR-E14/E15/E16 rows: the five §4.4 ladder bands, 20 ms debounce, status bits 3/4 | **to be written** |
 | `persist_check.py` | FR-S39 holding persistence across a watchdog reset (`*_test` build) | **to be written** |
 | `version_check.py` | FR-S32 chain: `version.h` ↔ `RELEASES.md` ↔ flashed DUT | **to be written** |
 

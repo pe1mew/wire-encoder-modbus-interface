@@ -15,9 +15,10 @@
  * not to be mistaken for a finished product.
  *
  * Assumed pin map (TDS §4.2 — no schematic exists yet): PD6 Modbus line
- * (remap-switching discipline, no HDSEL), PA2 potentiometer wiper, PC2 DE/R̄Ē,
- * PC4 address jumper, PD1 SWIO, and PC1 — the one spare pin — for the optional
- * end-of-travel switch input.
+ * (remap-switching discipline, no HDSEL), PA2 potentiometer wiper (ADC ch0),
+ * PC2 DE/R̄Ē, PC1 address jumper, PC4 end-switch ladder (ADC ch2), PD1 SWIO.
+ * Every pin is committed; PC1/PC4 are assigned the reverse of the obvious way
+ * because PC4 has an ADC channel and the switch loop needs it.
  */
 
 #include "board.h"
@@ -32,8 +33,7 @@ int main(void)
 	funGpioInitAll();
 
 	/* FR-S18 init order:
-	 * (1) PC2/DE low first + (2) PC4 address latch + IWDG + PVD
-	 * (+ the optional PC1 end-switch input) ... */
+	 * (1) PC2/DE low first + (2) PC1 address latch + IWDG + PVD ... */
 	board_init_early();
 
 	/* (3) sensor front-end ready — stage D: we_init() goes here, after the
@@ -54,13 +54,13 @@ int main(void)
 	while (1)
 	{
 		mb_poll();
-		regs_service();          /* FR-S30/FR-E05 config change -> clear;
-		                          * FR-E15 end-switch debounce */
+		regs_service();          /* FR-S30/FR-E05: config change -> clear */
 		regs_persist_service();  /* FR-S39: save changed settings to flash
 		                          * (after mb_poll sent any response) */
 
 		/* Stage D: meas_open_service() goes here — window pacing, we_sample(),
-		 * FR-E04 scaling, then regs_publish_opening(). */
+		 * FR-E04 scaling, then regs_publish_opening(); plus we_switch_sample()
+		 * at >=10 Hz feeding regs_publish_switches() (FR-E14). */
 
 		if ((uint32_t)(SysTick->CNT - t_second) >= second_ticks)
 		{

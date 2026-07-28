@@ -22,7 +22,7 @@ FIRMWARE = Path(__file__).parent.parent.parent / "firmware"
 PIO = Path(os.environ["USERPROFILE"]) / ".platformio/penv/Scripts/pio.exe"
 CEIL_FLASH = 14336
 CEIL_RAM = 1792
-ENVS = ["encoder", "encoder_endswitch", "encoder_test"]
+ENVS = ["encoder", "encoder_test"]
 RELEASE_ENV = "encoder"
 
 

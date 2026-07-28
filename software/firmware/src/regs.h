@@ -7,9 +7,7 @@
  * stage C (`design/integrationPlan.md`).
  *
  * The map is fixed (FR-MB27): raw input addresses 0x0000–0x000B (12 registers)
- * and raw holding addresses 0x0000–0x0005 (6 registers). Where the optional
- * end-switch feature (FR-E14) is not compiled in, its status bit reads 0 — the
- * register is never unmapped, so a master sees the same map either way.
+ * and raw holding addresses 0x0000–0x0005 (6 registers).
  *
  * @par Current state — no measurement service
  * The encoder driver does not exist yet (`design/driverDevelopment.md` §3), so
@@ -63,14 +61,50 @@ uint16_t regs_raw_open(void);     /**< 40006 raw ADC code, window fully open (FR
 /** @} */
 
 /**
+ * @brief Scale a raw ADC code to a window opening in 0.1 mm (FR-E04).
+ *
+ * Applies the persisted two-point calibration:
+ * @code
+ *   opening = offset + ((raw - raw_closed) * travel) / (raw_open - raw_closed)
+ *              40001                40005      40004      40006     40005
+ * @endcode
+ *
+ * @par Direction-agnostic
+ * The calibration points may be given in @b either order. `raw_open <
+ * raw_closed` describes a mounting where the wiper code @e falls as the window
+ * opens — which is a coin toss determined by how the draw-wire is fitted
+ * relative to the moving frame — and is handled here rather than being pushed
+ * onto the installer as a wiring instruction. FR-E06 requires only that the two
+ * points differ by at least @ref CAL_MIN_SPAN.
+ *
+ * @par Clamping and monotonicity
+ * The result is clamped to `[offset, offset + travel]` and never exceeds 65534
+ * (65535 is the FR-E07 fault sentinel). Clamping at @e both ends is what makes
+ * the reported opening monotonic in the raw code across the whole ADC range,
+ * with no step at the calibration points.
+ *
+ * @param raw Raw ADC code from the wiper.
+ * @return Window opening in 0.1 mm units.
+ *
+ * @note Integer-only, and the overflow bound is tight enough to be worth
+ *       stating: the distance from the closed point is clamped to the
+ *       calibrated span @b before the multiply, so the largest intermediate is
+ *       65535 × 65534 = 4 294 770 690 — inside `uint32_t` by just 196 605,
+ *       about 0.0046 %. It holds only because both operands are 16-bit. Any
+ *       widening of the registers invalidates it immediately.
+ * @note Lives here rather than in the measurement service because the
+ *       calibration values live here; the measurement service calls it once per
+ *       window (integration stage D).
+ */
+uint16_t regs_scale_opening(uint16_t raw);
+
+/**
  * @brief Per-loop register housekeeping.
  *
  * FR-S30/FR-E05: on a valid write to 40002/40003 (window/averaging) or to
  * 40004/40005/40006 (calibration), clears the averaging accumulator and
  * re-asserts status bits 0/1 — a rescale must never let the boxcar mix pre- and
- * post-calibration values. Where the optional end-switch feature is compiled
- * in, also runs the FR-E15 debounce and maintains status bit 3.
- * Call once per main-loop pass.
+ * post-calibration values. Call once per main-loop pass.
  */
 void regs_service(void);
 
@@ -114,6 +148,31 @@ void regs_window_aborted(void);
  *          the measurement layer is fixed before that code is written.
  */
 void regs_publish_opening(uint16_t raw, uint16_t open_0_1mm, bool valid);
+
+/**
+ * @brief Publish one end-switch ladder reading (FR-E14/E15/E16).
+ *
+ * Classifies @p raw into one of the five TDS §4.4 states, debounces the
+ * classification for 20 ms (FR-E15), and maintains status bit 3 (end of travel
+ * reached) and bit 4 (switch-loop fault) accordingly.
+ *
+ * The band thresholds live here rather than in the driver so they sit next to
+ * the status bits they drive and next to the requirement that defines them.
+ * The driver (@ref we_switch_sample) only produces the raw code.
+ *
+ * @param raw Raw ADC code from the ladder on PC4.
+ *
+ * @note Debouncing is a SysTick comparison, never a delay: a candidate state
+ *       simply has to survive 20 ms of calls. Call once per main-loop pass, or
+ *       at whatever rate the measurement service samples the ladder (≥10 Hz,
+ *       FR-E14) — the debounce measures elapsed time, not call count.
+ * @note FR-E16: a switch-loop fault is reported and nothing more. It never
+ *       suppresses or alters the opening registers, which come from an
+ *       independent front-end.
+ * @warning Nothing calls this yet — the measurement service is integration
+ *          stage D.
+ */
+void regs_publish_switches(uint16_t raw);
 
 #ifdef TEST_HOOKS
 /**

@@ -6,7 +6,7 @@
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
 | Status | **Stages A–C complete** (skeleton, board bring-up, register image + persistence — all carried over and building). **Stage D onward not started** — blocked on the phase-1 encoder driver. |
-| Related docs | `design/TDS.md` v0.1, `design/softwareArchitecture.md`, `design/driverDevelopment.md`, `software/hil/README.md` |
+| Related docs | `design/TDS.md` v0.3, `design/softwareArchitecture.md`, `design/driverDevelopment.md`, `software/hil/README.md` |
 
 ## 1. Purpose
 
@@ -20,7 +20,7 @@ cannot run until a board exists.
 | Input | Provenance | Confidence |
 |---|---|---|
 | Modbus RTU driver (`mb.c`) | Sibling project phase 3 — 26/26 matrix, 40/40 endurance, latency histogram | High |
-| Board bring-up (`board.c`) — FR-S18 init order, PC4 latch, IWDG, PVD | Sibling project, silicon-verified | High |
+| Board bring-up (`board.c`) — FR-S18 init order, PC1 address latch, IWDG, PVD | Sibling project, silicon-verified | High |
 | Flash persistence (`persist.c`) — FR-S39 ping-pong store | Sibling project, verified across watchdog reset and real power cycle | High |
 | Debug UART | Sibling project | High |
 | Encoder driver (`we.c`) | **Does not exist** | — |
@@ -32,10 +32,10 @@ cannot run until a board exists.
    fix to a driver is a fix everywhere, and the HIL evidence keeps
    pointing at the code that was actually tested.
 2. **One release build** (FR-S01/FR-S02): `encoder`, build byte 0x01,
-   address 40/45. Two non-product environments exist beside it —
-   `encoder_endswitch` (the optional PC1 input, §3.5) and `encoder_test`
-   (`TEST_HOOKS`). **Never release a test binary.** There is deliberately no
-   variant machinery: one sensor, read one way.
+   address 40/45 by the PC1 jumper. One non-product environment sits beside
+   it — `encoder_test` (`TEST_HOOKS`). **Never release a test binary.**
+   There is deliberately no variant machinery: one sensor, read one way, and
+   the end switches are part of the product rather than an option.
 3. **Resource ceilings are build gates, not guidelines** —
    `board_upload.maximum_size` 14336 / `maximum_ram_size` 1792 (NFR-RES01).
    A build that outgrows the budget fails rather than shipping.
@@ -50,18 +50,16 @@ cannot run until a board exists.
 
 ### Stage A — skeleton — **DONE**
 
-PlatformIO project, both envs building, `sensors.h` capability mapping,
-`version.h`. *Demonstrated:* `pio run` succeeds inside the NFR-RES01
-ceilings — 3 572 B flash / 616 B RAM for the release build, 3 720 B / 624 B
-with the end-switch option.
+PlatformIO project building, `sensors.h` build-type mapping, `version.h`. *Demonstrated:* `pio run` succeeds inside the NFR-RES01
+ceilings — 3 568 B flash / 616 B RAM for the release build.
 
 ### Stage B — board bring-up — **DONE (inherited)**
 
-`board.c`: FR-S18 init order with PC2/DE low as the first GPIO action, PC4
+`board.c`: FR-S18 init order with PC2/DE low as the first GPIO action, PC1
 address latch (FR-S03), IWDG (FR-S20) and PVD (FR-S22).
 *Demonstrated in the sibling project on the same silicon;* **owed here:**
-re-confirm the address latch reads 40/45 on this project's first board. The
-optional PC1 end-switch input is configured here too, when compiled in.
+re-confirm the address latch reads 40/45 on this project's first board —
+note the jumper is on **PC1**, not PC4 (TDS §4.2).
 
 ### Stage C — register image + persistence — **DONE**
 
@@ -121,7 +119,7 @@ plus the measurement rows. Populates `software/hil/testReport.md`.
 
 | Quantity | Ceiling | Current | Note |
 |---|---|---|---|
-| Flash | 14 336 B (NFR-RES01) | 3 572 B *(skeleton)* | Record per release in `softwareArchitecture.md` §5 |
+| Flash | 14 336 B (NFR-RES01) | 3 568 B *(skeleton)* | Record per release in `softwareArchitecture.md` §5 |
 | RAM | 1 792 B (NFR-RES01) | 616 B *(skeleton)* | Averaging blocks are the largest planned addition (~384 B) |
 | Response latency | 100 ms hard / 15 ms typical (FR-MB20/21) | not measured here | Sibling project: 4.12 ms median through a MAX3485 |
 | ADC burst per window | ≪ 1 ms | not measured | 16 conversions at ≥71 cycles; nothing else in this loop blocks |
@@ -135,10 +133,10 @@ plus the measurement rows. Populates `software/hil/testReport.md`.
   caps travel at 6.5 m), the movement-rate sign, and a possible
   percentage-open register as open. All three are register-map changes.
   Settle them before any master integrates.
-- **`encoder_endswitch` is an unexercised build.** An optional environment
-  that nobody flashes rots. Either the mechanism gets switches and this
-  becomes the shipped build, or it should be dropped rather than carried
-  indefinitely.
+- **The end-switch ladder has never been built.** Its five bands (TDS §4.4)
+  are arithmetic, not measurement: the resistor values, the ~58-count worst
+  margin, and the assumption that 1 % parts hold it all want confirming on a
+  breadboard before the PCB is laid out.
 - **Two devices per RS-485 segment.** One address jumper, one address pair.
   A site with three instrumented windows on one bus needs a second jumper —
   a PCB change. Decide before layout.

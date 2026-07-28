@@ -7,7 +7,7 @@
 // response to a valid addressed request). Observability = the bus itself,
 // decoded on the Saleae; DE on PC2 is observable on a second channel.
 //
-// Slave address 40 (TDS FR-S03 jumper-open value; the PC4 jumper itself is
+// Slave address 40 (TDS FR-S03 jumper-open value; the PC1 jumper itself is
 // handled at integration). Holding registers mirror TDS §2.8; input
 // registers serve known patterns for read/byte-order tests plus live uptime
 // and the driver's own diagnostic counters, so the protocol matrix can run

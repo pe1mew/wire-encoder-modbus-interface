@@ -8,13 +8,13 @@
  * wind vane. There is nothing to select between, so unlike that project there
  * is no `SENSOR_*` build selector: the single build is the product.
  *
- * Two optional compile-time features remain, both off by default:
+ * One compile-time option remains: `TEST_HOOKS`, the bench-only hooks (FR-S20
+ * watchdog hang trigger), off by default. Never release a binary built with it.
  *
- *   - `HAVE_END_SWITCH` — an end-of-travel switch input on PC1, the only spare
- *     pin on the SOP-8 package (TDS §4.2). Fit it only if the mechanism has the
- *     switches; the firmware is complete without it.
- *   - `TEST_HOOKS` — bench-only hooks (FR-S20 watchdog hang trigger). Never
- *     release a binary built with this.
+ * The end-of-travel switches are @b not optional (FR-E14): they are read as a
+ * supervised resistor ladder on PC4 (TDS §4.4), and the address jumper takes
+ * PC1 — the reverse of the obvious assignment, because PC4 has an ADC channel
+ * and PC1 does not.
  *
  * @see board.h for the Modbus address map.
  */

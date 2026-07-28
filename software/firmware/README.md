@@ -26,9 +26,11 @@ variant machinery and no `SENSOR_*` selector.
 
 | Environment | Extra define | Purpose | Release? |
 |---|---|---|---|
-| `encoder` | — | **The product.** Build byte 0x01, address 40 (jumper open) / 45 (bridged) | ✅ |
-| `encoder_endswitch` | `HAVE_END_SWITCH` | Adds the optional end-of-travel switch input on PC1 (TDS §3.5), published as status bit 3 | only if the mechanism has switches |
+| `encoder` | — | **The product.** Build byte 0x01, address 40 (PC1 jumper open) / 45 (bridged) | ✅ |
 | `encoder_test` | `TEST_HOOKS` | FR-S20 watchdog hang trigger (holding `0x00FF`, magic `0xDEAD`) for the HIL reset checks | ❌ **never** |
+
+The end-of-travel switches are **not** an option: they are read as a
+supervised resistor ladder on PC4 (TDS §4.4) and are part of the product.
 
 ## Prerequisites
 
@@ -50,7 +52,6 @@ integration stage D.
 ```sh
 pio run                            # the release build
 pio run -t upload                  # flash via WCH-LinkE
-pio run -e encoder_endswitch       # with the optional switch input
 ```
 
 There is no serial console: the release firmware never transmits
@@ -65,9 +66,8 @@ exceeds them fails. As-built for the skeleton:
 
 | Environment | Flash | RAM |
 |---|---|---|
-| `encoder` | 3 572 B (25 %) | 616 B (34 %) |
-| `encoder_endswitch` | 3 720 B (26 %) | 624 B (35 %) |
-| `encoder_test` | 3 600 B (25 %) | 616 B (34 %) |
+| `encoder` | 3 604 B (25 %) | 616 B (34 %) |
+| `encoder_test` | 3 632 B (25 %) | 616 B (34 %) |
 
 Those are skeleton numbers and are not a planning basis — the measurement
 service and the averaging engine are still to come (the latter adds ~384 B
@@ -84,6 +84,12 @@ rebuild. **Calibration is a field procedure over Modbus:**
    **40005**.
 2. Open it fully. Read 30005 and write that value to **40006**.
 3. Measure the actual travel and write it, in 0.1 mm, to **40004**.
+
+The order does not matter and neither does the direction: if the raw value
+*falls* as the window opens, write the readings to the same registers anyway
+— 40005 is whatever you read with the window closed, 40006 whatever you read
+with it open. The firmware handles both senses (FR-E04). The two must differ
+by at least 64 counts (FR-E06).
 
 That's it — the values survive power loss. The compile-time defaults that
 seed those registers on first boot can be overridden per build:
@@ -106,6 +112,21 @@ service exists** — a release that returns 0 for every measurement is not a
 product.
 
 ## Testing
+
+- **Host test** (no hardware). The FR-E04 opening scaling is pure integer
+  arithmetic with a sign-aware map, clamping at both ends and 0.0046 % of
+  overflow headroom — so it lives in `src/scale.c` with no hardware
+  dependency, and the test compiles the shipped code:
+
+  ```sh
+  cd test
+  gcc -O2 -Wall -Wextra -I../src -o test_scale test_scale.c ../src/scale.c && ./test_scale
+  ```
+
+  Covers both mounting senses, the offset behaviour at and beyond each
+  calibration point, the overflow corners, the minimum legal calibration
+  span, the unreachability of the fault sentinel, and monotonicity swept
+  across the whole ADC range. Run it after touching anything in `scale.c`.
 
 - **Acceptance suite** (bench):
 

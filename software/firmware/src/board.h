@@ -28,9 +28,13 @@
  * @def BOARD_MB_BASE_ADDRESS
  * @brief Per-build Modbus base slave address (FR-S03), before the jumper offset.
  *
- * This value is the address with the PC4 solder jumper open; bridging that
+ * This value is the address with the PC1 solder jumper open; bridging that
  * jumper to GND adds 5 (see @ref board_mb_address), so two units can share a
  * segment without collision. There is one build, hence one address pair.
+ *
+ * @note The jumper is on PC1, not PC4, deliberately (TDS §4.2): PC4 carries an
+ *       ADC channel and PC1 does not, so the analog pin goes to the end-switch
+ *       ladder and this boot-time digital read takes the digital pin.
  *
  * @note The 40/45 pair is deliberately clear of the sibling
  *       `windmeters-modbus-interface` family (30–37), so wind sensors and wire
@@ -53,7 +57,7 @@
  *     first GPIO action, enabling the receiver and disabling the driver so the
  *     node stays off the bus; until this point only the PCB's 10 k pull-down
  *     held the line;
- *  3. FR-S18 step 2 / FR-S03 — samples the PC4 solder jumper (internal
+ *  3. FR-S18 step 2 / FR-S03 — samples the PC1 solder jumper (internal
  *     pull-up, ~50 µs settle) and latches the Modbus slave address once
  *     (see @ref board_mb_address);
  *  4. FR-S22 — arms the PVD at its lowest threshold so the nominal 3.1–3.3 V
@@ -77,7 +81,7 @@ void board_init_early(void);
 /**
  * @brief Modbus slave address latched during @ref board_init_early
  *        (FR-S03/FR-MB07).
- * @return @ref BOARD_MB_BASE_ADDRESS when the PC4 jumper is open, or base + 5
+ * @return @ref BOARD_MB_BASE_ADDRESS when the PC1 jumper is open, or base + 5
  *         when it is bridged to GND. Fixed for the life of the reset — a
  *         mid-run jumper change has no effect until the next reset (FR-MB07).
  * @note Pass this to @ref regs_init as the driver's slave address.
@@ -105,29 +109,5 @@ void board_iwdg_feed(void);
  *       the FR-S20 watchdog reset the device into the FR-S21 defined state.
  */
 bool board_power_ok(void);
-
-#ifdef HAVE_END_SWITCH
-/**
- * @brief End-of-travel switch state (FR-E17, optional feature).
- *
- * Reads PC1 — the single spare pin on the SOP-8 package (TDS §4.2) — configured
- * as an input with an internal pull-up, so a switch closing to GND reads
- * active. Published as status-register bit 3 (FR-S33).
- *
- * @return True while a switch is closed (the pin reads low).
- *
- * @note There is exactly one input for what is usually two switches, because
- *       there is exactly one spare pin. Wire both switches to PC1 (in parallel
- *       for normally-open types) and let the master distinguish @e which end was
- *       reached from the reported position — the device already knows where it
- *       is, so encoding that in a second wire would be redundant. Telling them
- *       apart electrically costs the address jumper (PC4); see TDS §6.
- * @note PC1 is 5 V tolerant while VDD is 3.3 V, so a longer switch loop run at
- *       5 V is safe.
- * @warning Not debounced in hardware on the MCU side; @ref regs_service applies
- *          the FR-E17 debounce.
- */
-bool board_end_switch_active(void);
-#endif
 
 #endif

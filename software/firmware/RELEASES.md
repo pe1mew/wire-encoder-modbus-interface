@@ -15,8 +15,7 @@ version byte maps to exactly one commit here.
    SHA-256 in the row.
 5. `software/hil/version_check.py` against a flashed DUT must pass.
 
-The release is the `encoder` environment. `encoder_endswitch` is released
-only where the mechanism has the switches fitted; `encoder_test` is never
+The release is the `encoder` environment. `encoder_test` is never
 released.
 
 ## Releases

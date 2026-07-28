@@ -10,7 +10,10 @@ turns a **10 kΩ potentiometer**. The wiper voltage is therefore an absolute
 measure of the opening — valid the instant power returns, with no homing
 move and no count to lose.
 
-One firmware build, addressed by a solder jumper:
+Two end-of-travel switches report that the window has reached a mechanical
+stop, read as a supervised resistor ladder that also monitors its own cable.
+
+One firmware build, addressed by a PC1 solder jumper:
 
 | Jumper open | Jumper bridged |
 |---|---|
@@ -24,7 +27,7 @@ family (30–37), so both can share one RS-485 segment.
 
 | Area | State |
 |---|---|
-| Requirements | [`design/TDS.md`](design/TDS.md) **v0.2** — §2 Modbus contract inherited and proven; §3 measurement requirements drafted; §4 hardware open |
+| Requirements | [`design/TDS.md`](design/TDS.md) **v0.4** — §2 Modbus contract inherited and proven; §3 measurement requirements drafted; §4 hardware open |
 | Drivers | Modbus RTU + debug UART carried over HIL-verified; the encoder driver (`software/drivers/wire_encoder/`) is **not yet written** — its API contract is drafted in [`design/driverDevelopment.md`](design/driverDevelopment.md) |
 | Product firmware | Skeleton only: board bring-up, register image, flash persistence and the Modbus service build and run; **no measurement service yet** ([`design/integrationPlan.md`](design/integrationPlan.md) stage C) |
 | Hardware/HIL | No schematic yet — `hardware/KiCad/` holds the symbol libraries only. HIL harness scaffolding in place, check scripts to be written |
@@ -44,24 +47,28 @@ sensor front-end:
   behind a solder jumper; A/B fail-safe bias; SM712 TVS.
 - **Power**: 24 V passive PoE on the spare pairs (4/5 = +, 7/8 = −) →
   DB207 bridge (polarity protection only) → HLK-K7803 buck → 3.3 V.
-- **Sensor front-end**: the potentiometer wiper on PA2, read ratiometrically
-  against VDD — no external reference, so supply ripple cancels.
+- **Sensor front-end**: the potentiometer wiper on PA2 (ADC ch0), read
+  ratiometrically against VDD — no external reference, so supply ripple
+  cancels. The end-switch ladder is on PC4 (ADC ch2).
 
 **The pin budget is the binding constraint.** The SOP-8 package bonds
 several GPIO onto shared pins (pin 1 is PD6 *and* PA1; pin 8 is PD1, PD4
-*and* PD5), leaving **six physical I/O pins**. Five are committed — Modbus
-data, the wiper, DE/RE, the address jumper and SWIO — so **PC1 is the only
-spare**, and it carries the optional end-of-travel switch input. Any
-front-end idea that needs a second spare pin does not fit. See
+*and* PD5), leaving **six physical I/O pins — and every one is committed**:
+Modbus data, the wiper, DE/RE, the address jumper, the end-switch ladder,
+SWIO. Note PC1 and PC4 are assigned the reverse of the obvious way: PC4
+carries an ADC channel and PC1 does not, so the analog pin goes to the
+switch loop and the boot-time address jumper takes the digital pin. Any
+front-end idea that needs another pin does not fit. See
 [`design/TDS.md`](design/TDS.md) §4.2.
 
 ## Modbus register map (summary)
 
 12 input registers (FC04) and 6 holding registers (FC03/06/16). Inputs:
 instantaneous and averaged opening, the minimum/maximum of the current
-averaging window, the raw ADC code, status bits, identification (build +
-firmware version), uptime, CRC/served counters,
-seconds-since-last-valid-reading, and movement rate. Holdings: zero offset,
+averaging window, the raw ADC code, status bits (including end-of-travel
+reached and switch-loop fault), identification (build + firmware version),
+uptime, CRC/served counters, seconds-since-last-valid-reading, and movement
+rate. Holdings: zero offset,
 measurement window, averaging window, full travel, and the two-point raw
 calibration (raw code closed / raw code fully open) — so one image serves
 any window, calibrated in the field over Modbus. All persisted in flash
@@ -73,10 +80,10 @@ store. The authoritative map with ranges, defaults and requirement IDs is
 
 | Path | Contents |
 |---|---|
-| [`design/`](design/README.md) | The design-document chain (index in [`design/README.md`](design/README.md)): scratchBook → TDS → softwareArchitecture (+ UML diagrams in `design/diagrams/`) → driverDevelopment → integrationPlan |
+| [`design/`](design/README.md) | The design-document chain (index in [`design/README.md`](design/README.md)): scratchBook → description → TDS → softwareArchitecture (+ UML diagrams in `design/diagrams/`) → driverDevelopment → integrationPlan |
 | `hardware/KiCad/` | Schematic + PCB (KiCad); symbol libraries as git submodules |
 | `hardware/Documentation/` | Component datasheets (HLK-K78xx, DB20x, MAX3483/85, Kradex enclosure) |
-| `software/firmware/` | Product firmware (PlatformIO + ch32v003fun): one release build, plus an end-switch option and a bench-only test build |
+| `software/firmware/` | Product firmware (PlatformIO + ch32v003fun): one release build, plus a bench-only test build |
 | `software/drivers/` | Standalone driver projects with HIL test shells (the verified libraries the product references in place) |
 | `software/hil/` | Scripted hardware-in-the-loop harness: Saleae Logic 2 (MCP) + ADALM2000 (libm2k) + `acceptance/` pytest suite |
 | `Doxyfile` | Doxygen config — builds a single site (design docs + API reference) with this README as the landing page |
@@ -98,9 +105,9 @@ pio run                            # the release build
 pio run -t upload                  # flash via WCH-LinkE
 ```
 
-`encoder_endswitch` adds the optional PC1 end-switch input; `encoder_test`
-adds bench-only hooks — never release that binary. Resource ceilings
-(14 336 B flash / 1 792 B RAM, NFR-RES01) are enforced as hard build gates.
+`encoder_test` adds bench-only hooks — never release that binary. Resource
+ceilings (14 336 B flash / 1 792 B RAM, NFR-RES01) are enforced as hard
+build gates.
 The firmware version byte lives in `src/version.h`; the release process is
 documented in `RELEASES.md`.
 
@@ -121,6 +128,10 @@ documented in `RELEASES.md`.
 
 ## Documentation
 
+- **What the device does** — [`design/description.md`](design/description.md)
+  is the functional description in prose: sensing principle, what it
+  reports, commissioning, fault behaviour, and the boundary of what it does
+  not do. Start there.
 - **Design record** — [`design/README.md`](design/README.md) indexes the
   document chain (requirements → architecture → drivers → integration) and
   the UML diagrams.

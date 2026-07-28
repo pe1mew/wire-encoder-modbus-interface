@@ -1,11 +1,9 @@
 #include "persist.h"
 #include "regs.h"
 #include "sensors.h" /* BUILD_TYPE + WE_RAW_MAX_DEFAULT */
+#include "scale.h"
 #include "version.h"
-#ifdef HAVE_END_SWITCH
-#include "board.h"   /* board_end_switch_active (FR-E14) */
 #include "ch32fun.h" /* SysTick->CNT for the FR-E15 debounce */
-#endif
 
 /* ---- Holding registers (TDS §2.8: raw addr, min, max, default) ---- */
 
@@ -19,21 +17,33 @@ static uint16_t h_travel = 10000; /* 40004: 1..65534 (= 1000.0 mm) */
  * persisted (FR-S39), so one image serves any window and any wire routing with
  * no rebuild. FR-E04 opening:
  *   open_0.1mm = offset + ((raw - raw_closed) * travel) / (raw_open - raw_closed)
- * The FR-E06 cross-check (raw_open > raw_closed) is what keeps that divisor
- * sane. Defaults span the full 10-bit ADC range; a real installation calibrates
- * by closing the window, writing 40005 from 30005, opening it fully, and
- * writing 40006 the same way. */
+ * Defaults span the full 10-bit ADC range; a real installation calibrates by
+ * closing the window, writing 40005 from 30005, opening it fully, and writing
+ * 40006 the same way.
+ *
+ * The two points may be given in EITHER ORDER (FR-E04). raw_open < raw_closed
+ * describes a mounting where the wiper code falls as the window opens, which is
+ * decided by how the draw-wire happens to be fitted — a coin toss, and not
+ * something an installer should have to notice. What FR-E06 does require is
+ * that the two differ by at least CAL_MIN_SPAN: two adjacent codes would
+ * satisfy "not equal" while making one LSB of ADC noise swing the entire
+ * reported travel. */
 #ifndef RAW_CLOSED_DEFAULT
 #define RAW_CLOSED_DEFAULT 0
 #endif
 #ifndef RAW_OPEN_DEFAULT
 #define RAW_OPEN_DEFAULT WE_RAW_MAX_DEFAULT /* 10-bit ADC full scale, sensors.h */
 #endif
-_Static_assert(RAW_OPEN_DEFAULT > RAW_CLOSED_DEFAULT,
-               "default raw_open must exceed raw_closed (FR-E06) — else a fresh "
-               "device boots with a degenerate calibration");
-_Static_assert(RAW_OPEN_DEFAULT >= 1 && RAW_OPEN_DEFAULT <= 65535,
-               "default raw_open must fit the 40006 range");
+
+/* CAL_MIN_SPAN and cal_span() come from scale.h, next to the arithmetic that
+ * depends on them. Spelled out longhand here rather than calling cal_span():
+ * a _Static_assert needs a constant expression, and C11 does not admit a
+ * function call in one — not even an inline that would obviously fold. */
+_Static_assert((RAW_OPEN_DEFAULT > RAW_CLOSED_DEFAULT
+                    ? RAW_OPEN_DEFAULT - RAW_CLOSED_DEFAULT
+                    : RAW_CLOSED_DEFAULT - RAW_OPEN_DEFAULT) >= CAL_MIN_SPAN,
+               "the default calibration points must be at least CAL_MIN_SPAN "
+               "apart (FR-E06) — else a fresh device boots degenerate");
 static uint16_t h_raw_closed = RAW_CLOSED_DEFAULT; /* 40005: 0..65534 */
 static uint16_t h_raw_open = RAW_OPEN_DEFAULT;     /* 40006: 1..65535 */
 
@@ -57,7 +67,8 @@ static const mb_holding_t holdings[] = {
  * moves both halves of a constraint at once is judged on its result, not on the
  * intermediate state (FR-MB22 atomicity):
  *   FR-S31: (40003 s × 1000) ≥ 40002 ms
- *   FR-E06: 40006 > 40005 */
+ *   FR-E06: |40006 - 40005| >= CAL_MIN_SPAN — a magnitude, not an ordering, so
+ *           a reversed mounting calibrates as naturally as a normal one. */
 static bool cross_validate(const uint16_t *addrs, const uint16_t *vals,
                            uint8_t n)
 {
@@ -75,7 +86,8 @@ static bool cross_validate(const uint16_t *addrs, const uint16_t *vals,
 		if (addrs[i] == 0x0005)
 			raw_open = vals[i];
 	}
-	return (uint32_t)avg * 1000u >= window && raw_open > raw_closed;
+	return (uint32_t)avg * 1000u >= window &&
+	       cal_span(raw_closed, raw_open) >= CAL_MIN_SPAN;
 }
 
 /* ---- Input-register state (TDS §2.7) ---- */
@@ -92,8 +104,9 @@ static uint16_t r_rate;          /* 30012 movement rate (FR-E10)          */
 
 #define STATUS_FIRST_WINDOW_INCOMPLETE 0x0001 /* bit 0 (FR-S23/S30) */
 #define STATUS_AVG_NOT_FILLED          0x0002 /* bit 1 (FR-S23/S30) */
-#define STATUS_SENSOR_FAULT            0x0004 /* bit 2 (FR-E07)     */
-#define STATUS_END_SWITCH              0x0008 /* bit 3 (FR-E14)     */
+#define STATUS_WIPER_FAULT             0x0004 /* bit 2 (FR-E07)     */
+#define STATUS_END_REACHED             0x0008 /* bit 3 (FR-E14)     */
+#define STATUS_SWITCH_FAULT            0x0010 /* bit 4 (FR-E16)     */
 
 #define OPEN_FAULT_SENTINEL 65535u /* §2.7 — reported by 30001..30004 */
 #define FAULT_HOLD_S        2u     /* FR-E07: hold the last value this long */
@@ -143,15 +156,60 @@ static uint16_t shadow_raw_open;
  * only touches flash when a holding register differs from this. */
 static persist_settings_t persisted;
 
-#ifdef HAVE_END_SWITCH
-/* FR-E15 debounce: a new level must hold for DEBOUNCE_MS before it is
+/* ---- End-switch ladder (TDS §4.4 / FR-E14/E15/E16) ----
+ *
+ * Both end switches share PC4 through a supervised resistor ladder: a 10 k
+ * board-side pull-up, 4k7 per switch to GND, and a 47 k end-of-line resistor
+ * fitted IN THE FIELD at the far end of the cable. That last part is what makes
+ * the loop supervised — an EOL resistor on the PCB would monitor nothing.
+ *
+ * Nominal counts and the bands that decode them (thresholds are the lower edge
+ * of each band; the narrowest nominal-to-threshold margin is ~58 counts, so use
+ * 1 % resistors):
+ *
+ *   cable open / EOL missing  1023   >= 930   -> fault
+ *   normal, between the ends   843   >= 550
+ *   one end switch closed      306   >= 245   -> end reached
+ *   both closed (mis-wired)    187   >= 100   -> fault
+ *   cable shorted to GND         0   <  100   -> fault
+ *
+ * A reading in no band cannot happen with these thresholds (they tile the whole
+ * range), but the decode is written so the OPEN classification is the fallback:
+ * asserting the fault is always safer than reporting a healthy loop. */
+#define SW_TH_OPEN   930u
+#define SW_TH_NORMAL 550u
+#define SW_TH_ONE    245u
+#define SW_TH_BOTH   100u
+
+typedef enum {
+	SW_CABLE_OPEN = 0, /* fault */
+	SW_NORMAL,         /* between the ends */
+	SW_ONE_CLOSED,     /* at an end stop */
+	SW_BOTH_CLOSED,    /* fault */
+	SW_CABLE_SHORT,    /* fault */
+} sw_state_t;
+
+static sw_state_t sw_classify(uint16_t raw)
+{
+	if (raw >= SW_TH_OPEN)
+		return SW_CABLE_OPEN;
+	if (raw >= SW_TH_NORMAL)
+		return SW_NORMAL;
+	if (raw >= SW_TH_ONE)
+		return SW_ONE_CLOSED;
+	if (raw >= SW_TH_BOTH)
+		return SW_BOTH_CLOSED;
+	return SW_CABLE_SHORT;
+}
+
+/* FR-E15 debounce: a new classification must hold for DEBOUNCE_MS before it is
  * published. Timed off raw SysTick->CNT like everything else in this firmware
- * (design/softwareArchitecture.md) — no timer peripheral, no ISR. */
+ * (design/softwareArchitecture.md) — no timer peripheral, no ISR, no delay. */
 #define DEBOUNCE_MS 20u
-static bool     sw_published;  /* the debounced level currently in bit 3 */
-static bool     sw_candidate;  /* level we are timing */
-static uint32_t sw_since;      /* SysTick stamp when the candidate appeared */
-#endif
+static sw_state_t sw_published = SW_CABLE_OPEN; /* until the first sample */
+static sw_state_t sw_candidate = SW_CABLE_OPEN;
+static uint32_t   sw_since;    /* SysTick stamp when the candidate appeared */
+static bool       sw_seen;     /* a sample has arrived at least once */
 
 void regs_init(uint8_t mb_address)
 {
@@ -164,7 +222,15 @@ void regs_init(uint8_t mb_address)
 	/* FR-S39: seed the holdings from persistent storage; a blank/corrupt
 	 * store leaves the compile-time defaults (FR-S21 defined state). */
 	persist_settings_t ps;
-	if (persist_load(&ps)) {
+	if (persist_load(&ps) &&
+	    cal_span(ps.raw_closed, ps.raw_open) >= CAL_MIN_SPAN) {
+		/* The span check is not paranoia about our own store: it is the guard
+		 * that keeps regs_scale_opening's divisor away from zero no matter
+		 * what is in flash — a record written by an older firmware, or one
+		 * that predates FR-E06's minimum span, would otherwise divide by a
+		 * degenerate span on the first measurement. A record that fails it is
+		 * treated exactly like a blank store: fall back to the §2.8 defaults,
+		 * which is the FR-S21 defined state. */
 		h_offset = ps.offset;
 		h_window = ps.window;
 		h_avg = ps.avg;
@@ -186,16 +252,11 @@ void regs_init(uint8_t mb_address)
 	shadow_raw_closed = h_raw_closed;
 	shadow_raw_open = h_raw_open;
 
-#ifdef HAVE_END_SWITCH
-	/* Seed the debounce with the level actually present at boot, so a window
-	 * parked against an end stop reports bit 3 from the first response rather
-	 * than after a spurious 20 ms transition. */
-	sw_published = board_end_switch_active();
-	sw_candidate = sw_published;
+	/* Until the first ladder sample arrives the loop is, as far as this device
+	 * knows, unverified — so report the fault rather than an unearned clean
+	 * bill of health. The first regs_publish_switches call corrects it. */
+	r_status |= STATUS_SWITCH_FAULT;
 	sw_since = SysTick->CNT;
-	if (sw_published)
-		r_status |= STATUS_END_SWITCH;
-#endif
 }
 
 void regs_persist_service(void)
@@ -242,28 +303,49 @@ void regs_service(void)
 		r_status |= STATUS_FIRST_WINDOW_INCOMPLETE | STATUS_AVG_NOT_FILLED;
 		have_prev_open = false; /* the rate baseline is stale too */
 	}
+}
 
-#ifdef HAVE_END_SWITCH
-	/* FR-E14/E15: debounce, then publish as status bit 3. Non-blocking — the
-	 * candidate level simply has to survive DEBOUNCE_MS of main-loop passes,
-	 * so nothing here delays the FR-MB20 response or the watchdog feed. */
-	{
-		bool now = board_end_switch_active();
-		uint32_t t = SysTick->CNT;
-		if (now != sw_candidate) {
-			sw_candidate = now;
-			sw_since = t;
-		} else if (sw_candidate != sw_published &&
-		           (uint32_t)(t - sw_since) >=
-		               DEBOUNCE_MS * (FUNCONF_SYSTEM_CORE_CLOCK / 1000u)) {
-			sw_published = sw_candidate;
-			if (sw_published)
-				r_status |= STATUS_END_SWITCH;
-			else
-				r_status &= (uint16_t)~STATUS_END_SWITCH;
-		}
+void regs_publish_switches(uint16_t raw)
+{
+	/* FR-E14/E15/E16: classify, debounce, publish as status bits 3 and 4.
+	 * Non-blocking — the candidate state simply has to survive DEBOUNCE_MS of
+	 * calls, so nothing here delays the FR-MB20 response or the watchdog feed.
+	 * The debounce measures elapsed time, not call count, so the caller's
+	 * sampling rate is free to change. */
+	sw_state_t now = sw_classify(raw);
+	uint32_t t = SysTick->CNT;
+
+	if (now != sw_candidate) {
+		sw_candidate = now;
+		sw_since = t;
+		if (sw_seen)
+			return; /* a fresh candidate always has to serve its 20 ms */
 	}
-#endif
+	if (sw_seen && sw_candidate == sw_published)
+		return;
+	if (sw_seen && (uint32_t)(t - sw_since) <
+	                   DEBOUNCE_MS * (FUNCONF_SYSTEM_CORE_CLOCK / 1000u))
+		return;
+
+	/* First sample, or a candidate that has held long enough. Publishing the
+	 * very first sample immediately means a window parked against an end stop
+	 * reports bit 3 from its first response, rather than after a spurious
+	 * transition (FR-S18 criterion c). */
+	sw_seen = true;
+	sw_published = sw_candidate;
+
+	if (sw_published == SW_ONE_CLOSED)
+		r_status |= STATUS_END_REACHED;
+	else
+		r_status &= (uint16_t)~STATUS_END_REACHED;
+
+	/* FR-E16: the three states a healthy installation cannot produce. Reported
+	 * only — the opening registers come from an independent front-end and are
+	 * never suppressed or altered by a switch-loop fault. */
+	if (sw_published == SW_NORMAL || sw_published == SW_ONE_CLOSED)
+		r_status &= (uint16_t)~STATUS_SWITCH_FAULT;
+	else
+		r_status |= STATUS_SWITCH_FAULT;
 }
 
 const mb_config_t *regs_cfg(void)
@@ -277,6 +359,18 @@ uint16_t regs_avg_s(void)        { return h_avg; }
 uint16_t regs_travel_0_1mm(void) { return h_travel; }
 uint16_t regs_raw_closed(void)   { return h_raw_closed; }
 uint16_t regs_raw_open(void)     { return h_raw_open; }
+
+uint16_t regs_scale_opening(uint16_t raw)
+{
+	/* The arithmetic itself lives in scale.c — hardware-free, and host-tested
+	 * at its corners by software/firmware/test/test_scale.c. This wrapper's
+	 * only job is to supply the calibration values, which regs.c owns.
+	 *
+	 * The span is guaranteed >= CAL_MIN_SPAN by FR-E06 on every Modbus write
+	 * and by the regs_init guard on every load from flash, so scale_opening's
+	 * divisor is never zero. */
+	return scale_opening(raw, h_offset, h_travel, h_raw_closed, h_raw_open);
+}
 
 void regs_second_tick(void)
 {
@@ -292,7 +386,7 @@ void regs_second_tick(void)
 		if (invalid_s < 0xFFFF)
 			invalid_s++;
 		if (invalid_s > FAULT_HOLD_S) {
-			r_status |= STATUS_SENSOR_FAULT;
+			r_status |= STATUS_WIPER_FAULT;
 			r_open_inst = OPEN_FAULT_SENTINEL;
 			r_open_avg = OPEN_FAULT_SENTINEL;
 			r_open_min = OPEN_FAULT_SENTINEL;
@@ -323,7 +417,7 @@ void regs_publish_opening(uint16_t raw, uint16_t open_0_1mm, bool valid)
 
 	sample_invalid = false;
 	invalid_s = 0;
-	r_status &= (uint16_t)~STATUS_SENSOR_FAULT;
+	r_status &= (uint16_t)~STATUS_WIPER_FAULT;
 	r_reading_age_s = 0; /* FR-S36 */
 
 	r_open_inst = open_0_1mm; /* 30001 */

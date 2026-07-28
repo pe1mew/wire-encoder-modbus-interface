@@ -76,4 +76,36 @@ bool we_sample(uint16_t *raw);
  */
 uint16_t we_raw_max(void);
 
+/**
+ * @brief Acquire one raw code from the end-switch ladder on PC4 (FR-E14).
+ *
+ * The two end-of-travel switches share PC4 through a supervised resistor
+ * ladder (TDS §4.4): a board-side pull-up, a resistor per switch to GND, and
+ * an end-of-line resistor fitted in the field at the far end of the cable. The
+ * resulting level distinguishes five states — cable open, normal, one switch
+ * closed, both closed, cable shorted — so a cut or shorted cable is
+ * distinguishable from a switch operating, which a single digital input cannot
+ * do.
+ *
+ * This driver owns the ADC (it also reads the wiper on channel 0), so the
+ * channel switch and its settling live here. It returns the raw code and
+ * nothing else: **the band table, the FR-E15 debounce and the FR-S33 status
+ * bits are the caller's** (@ref regs_publish_switches), which keeps the
+ * thresholds next to the requirement that defines them.
+ *
+ * @param[out] raw Receives the raw ADC code, 0..@ref we_raw_max. Written only
+ *                 when the function returns true.
+ * @return @c true when the conversion completed. A ladder reading is never
+ *         "invalid" in the FR-E07 sense — every level means something, up to
+ *         and including "the cable is cut" — so this returns false only if the
+ *         conversion itself failed.
+ *
+ * @note Call at ≥10 Hz (FR-E14). The conversion is short enough that the
+ *       ladder can be sampled every measurement window alongside the wiper
+ *       without threatening the FR-MB20 response budget.
+ * @note Same ≥71-cycle sample time as the wiper: the ladder's source impedance
+ *       with a switch closed is ≤5 kΩ, inside the 10 kΩ that setting targets.
+ */
+bool we_switch_sample(uint16_t *raw);
+
 #endif /* WE_H */

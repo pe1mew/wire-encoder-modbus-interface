@@ -20,9 +20,7 @@ Thank you for considering contributing to this project! Please follow the guidel
   tests reference the requirement IDs they implement. Start from the design
   index [`design/README.md`](design/README.md).
 - **Firmware changes**: the release build must build — `pio run` from
-  `software/firmware/` (resource ceilings are enforced by the build). If you
-  touch anything the optional end-switch feature reaches, build
-  `-e encoder_endswitch` too.
+  `software/firmware/` (resource ceilings are enforced by the build).
 - **Hardware-verified changes**: if you have the bench (WCH-LinkE, Saleae
   Logic 2, ADALM2000 — see [`software/hil/README.md`](software/hil/README.md)),
   run the acceptance suite against the flashed device:

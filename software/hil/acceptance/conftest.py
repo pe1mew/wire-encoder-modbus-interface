@@ -4,9 +4,7 @@ Wraps the check scripts as pytest runs against a flashed DUT:
 
     ..\\.venv-m2k\\Scripts\\python.exe -m pytest . -v
 
-There is one release build, so there is nothing to select. Pass --endswitch
-when the flashed binary is the optional `encoder_endswitch` build, so the
-FR-E14/E15 end-switch rows run instead of being skipped.
+There is one release build, so there is nothing to select.
 
 The suite is intentionally a thin orchestrator: each underlying script
 remains runnable standalone for debugging, and its PASS/FAIL contract is
@@ -29,9 +27,6 @@ HIL = Path(__file__).parent.parent
 
 
 def pytest_addoption(parser):
-    parser.addoption("--endswitch", action="store_true",
-                     help="the flashed binary is encoder_endswitch — run the "
-                          "FR-E14/E15 end-switch rows")
     parser.addoption("--mcp-port", type=int, default=10530)
     # Bench-gated rows. Each needs a specific rig, so it is skipped unless
     # explicitly enabled — kept out of the default green run.
@@ -44,11 +39,6 @@ def pytest_addoption(parser):
     parser.addoption("--run-m2k", action="store_true",
                      help="M2K-stimulus rows: FR-E03 divider sweep, FR-E07 "
                           "fault/recovery, VDD ratiometric sweep")
-
-
-@pytest.fixture(scope="session")
-def endswitch(request):
-    return request.config.getoption("--endswitch")
 
 
 @pytest.fixture(scope="session")
