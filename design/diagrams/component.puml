@@ -1,0 +1,61 @@
+@startuml component
+title Wire Encoder Modbus Interface — Firmware Component Diagram (target)
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultTextAlignment center
+skinparam ArrowColor #14746F
+skinparam component {
+  BackgroundColor #F5F7F7
+  BorderColor #5B6B6A
+}
+
+' ---- external nodes ----
+actor "Modbus master\n(RS-485)" as master
+component "draw-wire encoder\n10 kΩ pot / PA2 ADC" as enc #FFFFFF
+component "end switches\n(optional) / PC1" as sw #FFFFFF
+
+' ---- orchestration & platform (cross-cutting) ----
+component "main\nzero-ISR super-loop" as main #EAEFEF
+component "board\nIWDG · PVD · address · PC1" as board #EAEFEF
+
+' ---- Modbus + register hub ----
+component "mb\nModbus RTU driver (USART1/PD6)" as mb
+component "regs\nregister image (hub)" as regs #DCEBE9
+
+' ---- measurement pipeline (NOT YET IMPLEMENTED) ----
+component "meas_open\nwindow · scale · fault" as mo #FFF4E0
+component "we\nADC burst + float detect" as we #FFF4E0
+
+' ---- helpers / storage ----
+component "avg\nboxcar mean + min/max" as avg #FFF4E0
+component "persist\nflash store · FR-S39" as persist
+
+' ==== data flow (sensor → bus) ====
+enc --> we   : PA2 wiper (ratiometric)
+we  --> mo   : raw code / validity
+mo  --> regs : publish_opening\n(30001–30005, 30012)
+sw  --> board : switch closure
+board --> regs : debounced state\n-> status bit 3 (FR-E14/E15)
+regs <--> mb : regs_cfg:\nholdings · input_read · FR-S31 + FR-E06
+mb  <--> master : RTU frames\nFC03/04/06/16
+
+' ==== helpers / storage ====
+regs --> avg : add / read (mean, min, max)
+regs <--> persist : load (boot) / save (FR-S39)
+
+' ==== orchestration (control) ====
+main ..> mb    : mb_poll (each loop)
+main ..> regs  : service / persist_service
+main ..> mo    : service
+main ..> board : iwdg_feed / power_ok
+board --> regs : latched mb_address
+
+legend right
+  solid = runtime data / calls
+  dotted = control
+  regs is the central register hub
+  ORANGE = planned, not yet implemented
+  end switches are an OPTIONAL build feature
+endlegend
+@enduml

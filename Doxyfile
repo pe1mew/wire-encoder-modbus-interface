@@ -1,0 +1,61 @@
+# Minimal Doxyfile for the Wire Encoder Modbus Interface firmware.
+#
+# Generate the HTML API docs with:
+#     doxygen Doxyfile
+# Output lands in documentation/doxygen/html/index.html.
+#
+# Only non-default options are set; everything else uses Doxygen's defaults.
+
+#---------------------------------------------------------------------------
+# Project
+#---------------------------------------------------------------------------
+PROJECT_NAME           = "Wire Encoder Modbus Interface"
+PROJECT_BRIEF          = "CH32V003 Modbus RTU window-opening sensor — draw-wire potentiometer"
+PROJECT_NUMBER         = "firmware unreleased (TDS v0.2)"
+OUTPUT_DIRECTORY       = documentation/doxygen
+
+#---------------------------------------------------------------------------
+# Input — design docs (as pages) + the firmware and driver libraries
+#---------------------------------------------------------------------------
+INPUT                  = README.md \
+                         design \
+                         software/firmware/RELEASES.md \
+                         software/hil/README.md \
+                         software/hil/testReport.md \
+                         changelog.md \
+                         contributing.md \
+                         code_of_conduct.md \
+                         license.md \
+                         software/firmware/src \
+                         software/drivers/common \
+                         software/drivers/modbus_rtu/lib \
+                         software/drivers/wire_encoder/lib
+FILE_PATTERNS          = *.h *.c *.md *.puml
+RECURSIVE              = YES
+EXCLUDE_PATTERNS       = */.pio/* */libdeps/* */.venv*/* */build/*
+IMAGE_PATH             = design
+USE_MDFILE_AS_MAINPAGE = README.md
+
+#---------------------------------------------------------------------------
+# Build — C project, document everything (including static + all variants)
+#---------------------------------------------------------------------------
+OPTIMIZE_OUTPUT_FOR_C  = YES
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+JAVADOC_AUTOBRIEF      = YES
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+
+# Reveal declarations behind the optional-feature guards, so the docs cover
+# the end-switch input and the bench-only test hooks even though neither is
+# in the release build.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+PREDEFINED             = HAVE_END_SWITCH TEST_HOOKS
+
+#---------------------------------------------------------------------------
+# Output — HTML with a source browser; no LaTeX
+#---------------------------------------------------------------------------
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+SOURCE_BROWSER         = YES

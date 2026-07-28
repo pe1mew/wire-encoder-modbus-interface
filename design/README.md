@@ -1,0 +1,98 @@
+# Design documentation
+
+This directory holds the design record for the Wire Encoder Modbus
+Interface firmware — the chain from first idea to a validated,
+requirement-traced implementation. The documents build on each other in
+this order:
+
+```
+scratchBook  →  TDS  →  softwareArchitecture  →  driverDevelopment  →  integrationPlan
+(brainstorm)   (what)   (how + diagrams)         (drivers + results)   (product fw + results)
+```
+
+## What the device does
+
+Measures **how far a window is open** — a greenhouse vent, a roof light, a
+louvre — and publishes it on Modbus RTU over RS-485. A draw-wire encoder
+attached to the moving frame turns a **10 kΩ potentiometer**; the wiper
+voltage is an absolute measure of the opening, valid the instant power
+returns, with no homing move.
+
+## Where this project stands
+
+Read this before trusting a status line anywhere else: **the Modbus and
+platform half of this project is inherited and proven; the measurement half
+is a plan.** The documents below are honest about which is which, and the
+distinction matters when you pick up the work.
+
+| Document | Purpose | Status |
+|---|---|---|
+| [`TDS.md`](TDS.md) | **Technical Design Specification** — the requirements contract (FR-MB…, FR-S…, FR-E…, NFR-…) with measurable pass/fail criteria. The single source of truth for behaviour. | **v0.2 draft.** §2 Modbus and §3.1/§3.2 lifecycle inherited from the sibling project's v0.9 and verified there; §2.7/§2.8 register map and the FR-E series are new and expected to move; §4 hardware open |
+| [`softwareArchitecture.md`](softwareArchitecture.md) | **How** the requirements are met: the zero-ISR cooperative super-loop, the module split, the sizing rationale. §7 embeds the UML diagrams. | Inherited baseline adopted as-is; measurement modules marked *planned* |
+| [`driverDevelopment.md`](driverDevelopment.md) | Plan + results per standalone driver, each HIL-verified before integration. | Phase 0 and phase 2 satisfied by carried-over code; **phase 1 (the encoder driver) not started** — ready to begin, the sibling project's vane driver is the reference |
+| [`integrationPlan.md`](integrationPlan.md) | The product-firmware plan: stages A–F, each with an exit criterion, plus the hardware-gated test set. | Stages A–C done (skeleton, board, register image + persistence); D–F not started |
+| [`scratchBook.md`](scratchBook.md) | The brainstorm and working notes seeding the TDS — the sensor, the pin budget, scaling derivation, resolution/range decision, hardware questions. | Working notes |
+| [`diagrams/`](diagrams/) | UML diagrams as PlantUML sources + rendered PNGs (see below). | — |
+
+## The constraint that shapes everything
+
+The CH32V003**J4M6** is the SOP-8 package, and several GPIO share one
+physical pin (pin 1 is PD6 *and* PA1; pin 8 is PD1, PD4 *and* PD5). There
+are **six physical I/O pins**, five of them committed: Modbus data, the
+potentiometer wiper, RS-485 DE/RE, the address jumper, and SWIO. **PC1 is
+the only spare.** Check any front-end proposal against TDS §4.2 before
+assuming a pin exists.
+
+## Diagrams
+
+Three UML views live in [`diagrams/`](diagrams/) and are embedded in
+[`softwareArchitecture.md`](softwareArchitecture.md) §7:
+
+- **[`component.puml`](diagrams/component.puml)** — module structure & data
+  flow (potentiometer → `we` → `meas_open` → `regs` hub → Modbus). Planned
+  modules are shaded.
+- **[`superloop_sequence.puml`](diagrams/superloop_sequence.puml)** — one
+  zero-ISR super-loop iteration.
+- **[`modbus_state.puml`](diagrams/modbus_state.puml)** — the Modbus RTU
+  line-discipline state machine, carried over unchanged from the sibling
+  project (the protocol behaviour is identical).
+
+Regenerate the PNGs with the local PlantUML:
+
+```sh
+"C:/apps/plantuml/plantuml.exe" -tpng -o . design/diagrams/*.puml
+```
+
+## Build configuration
+
+**One release build** (FR-S01) — there is one sensor read one way, so there
+is no variant machinery. It is addressed by a PC4 solder jumper:
+
+| Jumper | Address |
+|---|---|
+| open | **40** |
+| bridged | 45 |
+
+Deliberately clear of the sibling windmeters family (30–37) so both can
+share one RS-485 segment. Two non-product environments sit beside the
+release build: `encoder_endswitch` (the optional PC1 end-switch input,
+TDS §3.5) and `encoder_test` (bench-only hooks — never released).
+
+## How this connects to the rest of the repo
+
+- The **API reference** ([`Doxyfile`](../Doxyfile) at the repo root) folds
+  these design documents in as pages alongside the header/source
+  documentation — run `doxygen Doxyfile` for a single browsable site with
+  the project [`README.md`](../README.md) as its landing page.
+- The requirements here are verified by the scripted bench in
+  [`software/hil/`](../software/hil/); every executed test with its
+  setup/expected/verdict belongs in
+  [`software/hil/testReport.md`](../software/hil/testReport.md).
+- Contribution workflow (requirements-first, build, run the acceptance
+  suite) is in [`contributing.md`](../contributing.md).
+- **The sibling project is part of the design record.** Where this chain
+  says "inherited", the reasoning and the bench evidence live in
+  [`windmeters-modbus-interface`](https://github.com/pe1mew/windmeters-modbus-interface)'s
+  `design/` directory. Don't re-derive what is already written down there —
+  in particular, its vane driver is the reference implementation for
+  reading a potentiometer on PA2.
