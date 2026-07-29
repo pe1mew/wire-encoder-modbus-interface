@@ -31,12 +31,14 @@ this design satisfies all three by construction.
 | What it measures (§2) | FR-WP01…07, 21, 22 | **Met**, subject to the sensor unit's own accuracy |
 | Timing (§3) | FR-WP08, 09, 10 | **Met**, with a maximum-age contract (FR-E17). The shipped default window is too long for this application and must be set at commissioning |
 | Modbus/electrical (§4) | FR-WP11…15, NF-WP01, 02 | **Met**, except FR-WP11 partially and a connector mismatch |
-| Environment (§5) | NF-WP03…08 | **Addressed** by the §4.5 enclosure strategy and NFR-ENV02…05, except the sensor unit's own cycle life |
+| Environment (§5) | NF-WP03…08 | **Addressed** by the §4.5 enclosure strategy and NFR-ENV02…05 — except NF-WP03's +70 °C, which the end switch caps at +65 °C, and the draw-wire unit's own cycle life |
 | Failure behaviour (§6) | FR-WP16…20 | **Met** for the parts that are the sensor's to meet |
 
-Counting only what is this device's responsibility: **27 met, 2 met with
-caveats, 4 belong to the controller** — and one procurement condition
-(NF-WP08 wiper life) that must be met when the draw-wire unit is chosen.
+Counting only what is this device's responsibility: **26 met, 3 met with
+caveats, 4 belong to the controller** — plus one procurement condition
+(NF-WP08 wiper life) for the draw-wire unit. The one knowing shortfall is
+**NF-WP03's upper temperature limit**: +65 °C against +70 °C asked, set by the
+chosen end-switch sensor and resolvable only by substituting it.
 
 ---
 
@@ -91,12 +93,12 @@ rather than relying on the seal alone.
 
 | ID | Req | Verdict | Note |
 |---|---|---|---|
-| NF-WP03 | −20 °C to +70 °C | ✅ **Met** | NFR-ENV01 is −25 °C to +70 °C — covers it, and the assumption is inherited from a part set that is industrial-grade throughout |
+| NF-WP03 | −20 °C to +70 °C | ⚠️ **Low end met, high end 5 °C short** | NFR-ENV01 is now **−25 °C to +65 °C** (narrowed 2026-07-29). The cold end has margin; the hot end does not reach +70 °C because the **LJ18A3-8-Z/BX end switch is rated to +65 °C** and is the narrowest part in the chain — the electronics would have carried +70 °C. **This is the one requirement the design knowingly does not meet in full.** It matters because the sensor sits at the window frame, exactly where the solar gain that motivated the +70 °C figure occurs, even though measured greenhouse air peaks at 33 °C. Resolution is a survey of the mounting position; if it can exceed 65 °C, the fix is a wider-range end switch |
 | NF-WP04 | 100 % RH, condensing | ✅ **Met** | **NFR-ENV02.** Sealed and glanded enclosure, plus protection of the board itself against condensation (conformal coating the recommended default) — because a sealed box in a swinging temperature still breathes. The acceptance criterion is a condensing-night cycle, which is AT-WP08 |
 | NF-WP05 | IP65 minimum, IP67 preferred | ✅ **Met — at the preferred level** | **NFR-ENV03: IP67.** The earlier RJ45 objection dissolves once the connectors are *inside* the box: ingress protection is a property of the enclosure and its glands, so an ordinary connector in a sealed enclosure is fine (§4.5) |
 | NF-WP06 | UV and greenhouse chemical resistance | ✅ **Met** | **NFR-ENV04.** Mounted out of direct UV inside the greenhouse structure, which is the shaded-position answer; where an installation cannot guarantee that, the requirement falls back to a UV-stabilised enclosure |
 | NF-WP07 | Tolerate motor vibration and end-stop shock without drift | ✅ **Met** | **NFR-ENV05**, with a 100-cycle acceptance criterion covering both the persisted calibration and mechanical mounting drift |
-| NF-WP08 | ~25 000 cycles / 20 years; **contacting technologies must be assessed** | ⚠️ **Procurement condition — the one item still open** | The sensor is a potentiometer — precisely the contacting wiper technology this requirement singles out. A conductive-plastic element will manage 25 000 strokes comfortably; a cermet or wirewound one may not. **This must be specified when the draw-wire unit is bought.** Partial mitigation: the two-point calibration is re-teachable, so wear that shifts the endpoints can be corrected in the field rather than requiring replacement |
+| NF-WP08 | ~25 000 cycles / 20 years; **contacting technologies must be assessed** | ⚠️ **Halved.** The end switches are now inductive proximity sensors (LJ18A3-8-Z/BX) — non-contact, so the cycle-life concern does not apply to them at all. It still applies to the potentiometer, which remains a procurement condition | The sensor is a potentiometer — precisely the contacting wiper technology this requirement singles out. A conductive-plastic element will manage 25 000 strokes comfortably; a cermet or wirewound one may not. **This must be specified when the draw-wire unit is bought.** Partial mitigation: the two-point calibration is re-teachable, so wear that shifts the endpoints can be corrected in the field rather than requiring replacement |
 
 ### 2.5 Failure behaviour
 

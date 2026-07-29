@@ -156,58 +156,71 @@ static uint16_t shadow_raw_open;
  * only touches flash when a holding register differs from this. */
 static persist_settings_t persisted;
 
-/* ---- End-switch ladder (TDS §4.4 / FR-E14/E15/E16) ----
+/* ---- End-switch divider (TDS §4.4 / FR-E14/E15/E16) ----
  *
- * Both end switches share PC4 through a supervised resistor ladder: a 10 k
- * board-side pull-up, 4k7 per switch to GND, and a 47 k end-of-line resistor
- * fitted IN THE FIELD at the far end of the cable. That last part is what makes
- * the loop supervised — an EOL resistor on the PCB would monitor nothing.
+ * The two LJ18A3-8-Z/BX proximity sensors are summed in a field junction and
+ * attenuated at the board:
  *
- * Nominal counts and the bands that decode them (thresholds are the lower edge
- * of each band; the narrowest nominal-to-threshold margin is ~58 counts, so use
- * 1 % resistors):
+ *   +V --[470k]--+                          (470k = end-of-line, in the field)
+ *   A  --[100k]--+---- signal ----[10k]--+-- PC4
+ *   B  --[100k]--+                       |
+ *                                      [4k7]
+ *                                        |
+ *                                       GND
  *
- *   cable open / EOL missing  1023   >= 930   -> fault
- *   normal, between the ends   843   >= 550
- *   one end switch closed      306   >= 245   -> end reached
- *   both closed (mis-wired)    187   >= 100   -> fault
- *   cable shorted to GND         0   <  100   -> fault
+ * The sensors are NOT open-collector: each has an internal 10k pull-up to +V
+ * (LJ_en.pdf p.2), so an inactive sensor SOURCES 24 V rather than floating.
+ * Hence a divider down from the sensor supply, not a pull-up to 3V3 — the
+ * earlier pull-up topology would have put 10-14 V on this pin.
  *
- * A reading in no band cannot happen with these thresholds (they tile the whole
- * range), but the decode is written so the OPEN classification is the fallback:
- * asserting the fault is always safer than reporting a healthy loop. */
-#define SW_TH_OPEN   930u
-#define SW_TH_NORMAL 550u
-#define SW_TH_ONE    245u
-#define SW_TH_BOTH   100u
+ * Nominals at 24 V, and the bands that decode them. Note the ordering is
+ * INVERTED relative to the old design: healthy is now the highest reading and
+ * a dead cable is zero.
+ *
+ *   normal, between the stops   547   >= 420
+ *   one sensor active           299   >= 150   -> end reached
+ *   both active (wiring fault)   56   >=  25   -> fault
+ *   cable open or shorted         0   <   25   -> fault
+ *
+ * Two properties worth not breaking:
+ *
+ *   - FAIL-SAFE BY CONSTRUCTION. The 4k7 is on the board, so a cut or
+ *     unconnected input is held at 0 and lands in the fault band. No input
+ *     state reads healthy by accident.
+ *   - The 100k summing resistors swamp the sensors' saturation voltage: at
+ *     Vsat = 1.5 V "one active" moves by 17 counts, where the old topology
+ *     moved 296 and mis-decoded as "normal".
+ *
+ * Tightest margin is 45 counts (normal at -15 % supply vs the 420 threshold).
+ * These are computed, not yet measured — see TDS §6. */
+#define SW_TH_NORMAL 420u
+#define SW_TH_ONE    150u
+#define SW_TH_BOTH    25u
 
 typedef enum {
-	SW_CABLE_OPEN = 0, /* fault */
-	SW_NORMAL,         /* between the ends */
-	SW_ONE_CLOSED,     /* at an end stop */
-	SW_BOTH_CLOSED,    /* fault */
-	SW_CABLE_SHORT,    /* fault */
+	SW_CABLE_FAULT = 0, /* open or shorted — nothing driving the node */
+	SW_BOTH_ACTIVE,     /* impossible on a working window — wiring fault */
+	SW_ONE_ACTIVE,      /* at an end stop */
+	SW_NORMAL,          /* between the stops */
 } sw_state_t;
 
 static sw_state_t sw_classify(uint16_t raw)
 {
-	if (raw >= SW_TH_OPEN)
-		return SW_CABLE_OPEN;
 	if (raw >= SW_TH_NORMAL)
 		return SW_NORMAL;
 	if (raw >= SW_TH_ONE)
-		return SW_ONE_CLOSED;
+		return SW_ONE_ACTIVE;
 	if (raw >= SW_TH_BOTH)
-		return SW_BOTH_CLOSED;
-	return SW_CABLE_SHORT;
+		return SW_BOTH_ACTIVE;
+	return SW_CABLE_FAULT;
 }
 
 /* FR-E15 debounce: a new classification must hold for DEBOUNCE_MS before it is
  * published. Timed off raw SysTick->CNT like everything else in this firmware
  * (design/softwareArchitecture.md) — no timer peripheral, no ISR, no delay. */
 #define DEBOUNCE_MS 20u
-static sw_state_t sw_published = SW_CABLE_OPEN; /* until the first sample */
-static sw_state_t sw_candidate = SW_CABLE_OPEN;
+static sw_state_t sw_published = SW_CABLE_FAULT; /* until the first sample */
+static sw_state_t sw_candidate = SW_CABLE_FAULT;
 static uint32_t   sw_since;    /* SysTick stamp when the candidate appeared */
 static bool       sw_seen;     /* a sample has arrived at least once */
 
@@ -334,7 +347,7 @@ void regs_publish_switches(uint16_t raw)
 	sw_seen = true;
 	sw_published = sw_candidate;
 
-	if (sw_published == SW_ONE_CLOSED)
+	if (sw_published == SW_ONE_ACTIVE)
 		r_status |= STATUS_END_REACHED;
 	else
 		r_status &= (uint16_t)~STATUS_END_REACHED;
@@ -342,7 +355,7 @@ void regs_publish_switches(uint16_t raw)
 	/* FR-E16: the three states a healthy installation cannot produce. Reported
 	 * only — the opening registers come from an independent front-end and are
 	 * never suppressed or altered by a switch-loop fault. */
-	if (sw_published == SW_NORMAL || sw_published == SW_ONE_CLOSED)
+	if (sw_published == SW_NORMAL || sw_published == SW_ONE_ACTIVE)
 		r_status &= (uint16_t)~STATUS_SWITCH_FAULT;
 	else
 		r_status |= STATUS_SWITCH_FAULT;

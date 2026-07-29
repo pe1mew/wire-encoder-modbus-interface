@@ -184,6 +184,16 @@ A cut wire to a window on a roof is a realistic failure, and 65535 in
 
 ## End switches — **mandatory**
 
+> **Superseded 2026-07-29.** The sensor is an LJ18A3-8-Z/BX inductive
+> proximity switch, and its output has an **internal 10 kΩ pull-up to +V** —
+> it is not a dry contact and it does not float. Everything below was written
+> for dry contacts; the pull-up topology it describes would have put 10–14 V
+> on the ADC pin. **The shipped design is the attenuating divider in TDS
+> §4.4.** This section is kept for the reasoning that still holds — why the
+> switches are mandatory, why the loop is supervised, and why the ladder does
+> not try to say *which* switch — but no number in it is current.
+
+
 **Decision: the end switches are part of the product, not an option.** They
 are how the device knows the window has physically reached a stop, which the
 measured opening can only ever *infer* — and the inference is only as good as
@@ -268,6 +278,65 @@ distinguishable from a switch operating.** For a sensor on a roof window
 that is the difference between "the window is closed" and "we have no idea
 where the window is", and it costs one resistor in the field.
 
+### What the LJ18A3-8-Z/BX changes (2026-07-29)
+
+**The good news first.** 6–30 V spans the board's 24 V PoE rail, so the
+sensors run straight off it — no extra regulator, no load on the 3.3 V rail.
+And being non-contact, they retire the 25 000-cycle wear worry for the
+switches entirely; only the potentiometer still carries it.
+
+**The problem.** Every band value in the table above assumes a contact that
+closes to 0 Ω. An NPN open-collector output closes to `Vsat`, not to zero,
+and that offset lands directly on the "active" levels:
+
+| `Vsat` | open | normal | one active | both active |
+|---|---|---|---|---|
+| 0 V *(as tabulated)* | 1023 | 844 | 306 | 187 |
+| 0.5 V | 1023 | 844 | 405 | **308** |
+| 1.5 V | 1023 | 844 | **602** | 549 |
+
+Against the thresholds as written (normal ≥550, one ≥245):
+
+- **at 0.5 V**, "both active" (308) climbs above the 245 threshold and decodes
+  as *one active* — a wiring fault reported as a normal end-stop;
+- **at 1.5 V**, "one active" (602) climbs above the 550 threshold and decodes
+  as *normal* — the device would say the window is clear of its stops while a
+  sensor is actively signalling.
+
+Both are **silent** mis-decodes. Nothing flags them; the number simply means
+something other than what the table says. That is the worst shape a bug can
+take in this device, and it arrived through a hardware substitution that looks
+like a straight swap.
+
+Neither document in `documentation/` states `Vsat`. It has to be measured on
+the actual part at the actual pull-up current (a few hundred µA, far below the
+sensor's rated load, so the low end of its range is likely) — and then the
+resistors and thresholds re-derived. That is now a blocking item in TDS §6.
+
+**Take the four-band simplification while re-deriving.** "Both active" and
+"cable shorted" are both impossible-state faults, both set bit 4, and neither
+is separately actionable — the answer to either is *go and look*. Merging them
+into one fault band below "one active" frees the bottom of the range and
+recovers most of the margin `Vsat` eats. Five states become four and nobody
+loses anything they were using.
+
+**And a new failure mode.** With dry contacts, any cable break disconnected
+the EOL resistor and read as *cable open*. With powered sensors, a break in
+the **+V conductor alone** kills both sensors while the 0 V and output
+conductors keep the EOL resistor connected — so the loop reads a healthy
+*normal* for ever, including at an end stop. That is exactly the
+plausible-but-wrong state the supervision existed to prevent, reintroduced by
+the move to active devices. Fixable at the schematic by deriving part of the
+pull-up from the sensors' +V at the far end, so losing it shifts the level.
+
+Two smaller consequences:
+
+- **Four conductors, not two** (+V, 0 V, out A, out B). The gland and terminal
+  block sizing in §4.5 assumed two.
+- **Power-on delay.** These sensors need tens of milliseconds before their
+  output is valid, which FR-S18's "first published state must match reality"
+  has to accommodate.
+
 ### Firmware consequences
 
 - The ADC now multiplexes two channels: A0 (wiper, ≥16 conversions) and A2
@@ -282,9 +351,65 @@ where the window is", and it costs one resistor in the field.
 - The fault states are diagnostics, not alarms — report them, do not let
   them suppress the opening reading.
 
-**Still to propagate:** TDS §3.5 and §4.2, and the firmware, still describe
-the optional single-bit PC1 version. This section is the decision; the TDS
-change follows.
+### Where this decision landed — **propagated in full (TDS v0.3)**
+
+This section was the decision; the TDS and the firmware have since caught up.
+Recorded here so a reviewer can check the loop closed rather than take it on
+trust — and so that anyone reopening the decision knows every place it
+touches.
+
+**Requirements** (`design/TDS.md`)
+
+| Where | What changed |
+|---|---|
+| §1.1, §1.2 | End switches described as a supervised ladder; "mandatory" and the PC1↔PC4 rationale added to the fixed decisions |
+| §2.7 | Status word: bit 3 *end of travel reached*, **new** bit 4 *switch-loop fault*; bit 2 renamed *wiper* fault now that two independent front-ends can fault |
+| §3.1 | FR-S01 no longer permits an optional product feature; FR-S03 and FR-S18 read the jumper on **PC1**; FR-S18 gained criterion (c) — the first published switch state must match reality with no spurious transition |
+| §3.5 | Rewritten and mandatory: **FR-E14** (sample ≥10 Hz, classify into five bands, unbanded → "cable open" as the safe default), **FR-E15** (20 ms debounce, never blocking), **FR-E16** (fault bit for the three impossible states, *report only*) |
+| §3.7 | FR-S33 bitfield redefined, with the note that bits 2 and 4 are independent and may combine |
+| §4.2 | Pin table rebuilt with a capability column; every pin committed; the swap justified in place |
+| §4.4 | **New section** — the ladder schematic, band table with nominals and thresholds, the ~58-count worst margin, the 1 % resistor requirement, and the warning that the EOL resistor must be *in the field* |
+| §6 | "One input for two switches" dropped as an open item; switch polarity added in its place |
+| FR-MB27 | Lost its "where not fitted, the bit reads 0" clause — there is no *not fitted* |
+
+**Firmware**
+
+| File | What changed |
+|---|---|
+| `sensors.h` | `HAVE_END_SWITCH` gone; the switches are part of the product |
+| `board.c/h` | Address jumper moved to PC1. `board_end_switch_active()` **removed** — the ladder is an ADC read, and the ADC has one owner (the driver), so a digital accessor on the board layer would have been the wrong home |
+| `regs.c/h` | `regs_publish_switches(raw)` added: the §4.4 band thresholds, the classifier, a SysTick debounce that measures elapsed time rather than call count. `STATUS_END_REACHED` + `STATUS_SWITCH_FAULT`; `STATUS_SENSOR_FAULT` → `STATUS_WIPER_FAULT` |
+| `we.h` | `we_switch_sample()` added to the driver contract |
+| `platformio.ini` | `encoder_endswitch` environment deleted |
+
+**Everything else:** `Doxyfile` (`PREDEFINED`), `test_builds.py` (env list),
+`conftest.py` (`--endswitch` option), `hil/README.md` (check-script table),
+`component.puml`, `softwareArchitecture.md`, the three READMEs,
+`integrationPlan.md`, `RELEASES.md`, `changelog.md`.
+
+### What is genuinely still owed
+
+Documentation is complete. What remains is implementation and evidence:
+
+1. **`we_switch_sample()` does not exist.** The whole encoder driver is
+   unwritten (driver phase 1), so nothing produces a ladder reading yet.
+2. **`regs_publish_switches()` is never called.** It compiles and its logic is
+   settled, but wiring it to the measurement service is integration stage D.
+   Until then it has been exercised by the compiler and nothing else.
+3. **The five bands have never been measured.** They are arithmetic — resistor
+   values, a ~58-count worst margin, and the assumption that 1 % parts hold
+   it. That wants a breadboard *before* the PCB is laid out, not after. It is
+   the item most likely to need the numbers moved.
+4. **Switch polarity is still open** (TDS §6). §4.4 assumes normally-open
+   contacts closing to GND; normally-closed inverts the whole table and
+   changes which state means "cable cut". Decide before the resistor values
+   go on a schematic.
+5. **The end-of-line resistor is an installation instruction**, not a BOM line
+   on the board. If it ends up fitted in the enclosure instead of at the far
+   end of the cable, the supervision silently degrades to a plain switch
+   input — the loop would read healthy with the cable cut beyond the
+   resistor. Worth stating on the schematic *and* in whatever the installer
+   actually reads.
 
 ---
 

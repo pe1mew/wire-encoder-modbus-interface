@@ -56,12 +56,20 @@ two-point calibration it stores itself (§6).
 
 ### 2.2 The two end switches
 
-Two switches report that the window has physically reached a mechanical
+Two sensors report that the window has physically reached a mechanical
 stop — one at each end of travel. They exist because the measured opening
 can only ever *infer* that a stop was reached, and that inference is only as
 trustworthy as the calibration behind it. A wire that has been re-strung or a
 drum that has slipped will report a confident, plausible, wrong number. The
 switches are a second, independent opinion.
+
+They are **inductive proximity switches** (LJ18A3-8-Z/BX), not mechanical
+contacts: an M18 barrel that detects a steel target within 8 mm, powered from
+the same 24 V that feeds the device. Nothing touches, so nothing wears, and
+the generous sensing range tolerates a window frame that shifts and settles
+over the years. Each has a red LED at the sensor itself, which makes
+commissioning possible without a meter — and each needs a **ferrous target**
+at its end stop, so a non-steel frame means adding target plates.
 
 Both switches share a single connection to the device through a **resistor
 ladder**, with an end-of-line resistor fitted at the far end of the switch
@@ -265,7 +273,9 @@ rain-wetted.
 - The unit should be **mounted out of direct UV**. Inside the greenhouse
   structure this is normally automatic; it is worth a moment's thought when
   choosing the spot.
-- Operating range is **−25 °C to +70 °C**, condensing.
+- Operating range is **−25 °C to +65 °C**, condensing. The upper figure is
+  set by the end-of-travel sensors rather than by the electronics; a
+  wider-range switch is what would raise it.
 
 > A sealed box in a condensing environment still breathes a little with daily
 > temperature swings, so the board itself is protected against condensation

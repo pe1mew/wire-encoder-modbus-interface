@@ -143,6 +143,76 @@ that also monitors its own cable.
   `we.h` API contract; **no implementation yet**, deliberately, so the
   firmware cannot link against a stub that looks like a driver.
 
+### Hardware decisions
+
+- **End switches: LJ18A3-8-Z/BX inductive proximity sensors** (2026-07-29).
+  NPN normally-open, 6–30 V, 8 mm range against a 30 × 30 × 1 mm iron target,
+  M18×1, unshielded, with an actuation LED. The supply range spans the board's
+  own 24 V PoE rail, so they run off it directly — no extra regulator and no
+  load on the 3.3 V. Being non-contact, they retire the 25 000-cycle wear
+  concern for the switches; only the potentiometer still carries it.
+  Datasheet in `documentation/Proximity-Switch-LJ18A3-8-Z-BX.pdf`. Confirmed
+  specs: <13 mA each, <300 mA output, ≈0.8 mm hysteresis, 500 Hz, reverse-
+  connection/surge/short-circuit protection, 1.1 m flying lead.
+- **§4.4 end-switch interface redesigned as an attenuating divider.** The
+  sensors are not open-collector — each has an internal 10 kΩ pull-up to +V
+  (`LJ_en.pdf` p. 2), so an inactive one *sources* 24 V rather than floating.
+  The previous pull-up-to-3.3 V topology would have sat at **10.4 V with one
+  sensor inactive and 14.0 V with both**, against an ADC pin whose maximum is
+  a diode drop above 3.3 V — a destroy-the-part error, caught before any board
+  existed. The sensor already provides a clean 0 ↔ 24 V signal, so the board
+  now **attenuates and clamps** instead of exciting: 100 k per output and a
+  470 k end-of-line summed in the field junction, 10 k + 4k7 and a clamp at
+  the board. Bands invert — healthy is now the highest reading (547) and a
+  dead cable is zero. Three things improved in the process:
+  **fail-safe by construction** (the board-side pull-down holds a
+  disconnected input at 0, which is the fault band, so nothing reads healthy
+  by accident); **saturation voltage almost stops mattering** (the 100 k
+  summing resistors reduce its effect from 296 counts to 17, so the unknown
+  `Vsat` is no longer make-or-break); and **±15 % supply tolerance is
+  absorbed** with ≥45 counts to spare at the tightest point. Given up: the
+  measurement is no longer ratiometric, and both-active vs cable-fault are
+  only just distinguishable — both are bit-4 faults, so treat them as one.
+  `regs.c`'s classifier and thresholds updated to match.
+- **⛔ Superseded — the original open-collector assumption.**
+  The manufacturer's manual (`LJ_en.pdf` p. 2) shows the NPN output carries an
+  **internal 10 kΩ pull-up to +V** — it is not a bare open collector and does
+  not float when inactive. The §4.4 network, which assumes it floats and pulls
+  it up to 3.3 V, would sit at **10.4 V with one sensor inactive and 14.0 V
+  with both**, against an ADC pin whose maximum is a diode drop above 3.3 V.
+  That is a destroy-the-part error, not a calibration one. The interface has to
+  become an attenuating divider referenced to the sensor supply; the
+  supervision concept survives, the topology and values do not. Verify on the
+  bench first: brown-to-black with the sensor unpowered should read ~10 kΩ.
+- **⚠ /BX is NPN; /BY is PNP — and one of the supplied datasheets is the /BY.**
+  The board pulls PC4 up to 3.3 V and relies on the sensor *sinking* it, which
+  is safe only for an open-collector output. A PNP part sources its own supply
+  rail and would put 24 V on an ADC pin. Check the marking on the sensor, not
+  the paperwork that came with it.
+- **NFR-ENV01 narrowed to −25…+65 °C**, and it now names what sets the limit:
+  the LJ18A3-8-Z/BX end switch (−30…+65 °C) is the narrowest part in the chain;
+  the electronics would have carried +70 °C. Stating the real figure beats
+  leaving a requirement the BOM cannot meet. The acceptance criterion also
+  gained a row — the §4.4 switch bands must decode correctly at both extremes,
+  because an NPN saturation voltage drifts with temperature. Consequence: this
+  is 5 °C below the greenhouse study's NF-WP03, and is now the one requirement
+  the design knowingly does not meet in full; the resolution is a survey of the
+  mounting position and, if needed, a wider-range switch.
+- **⚠ The §4.4 ladder band values are now provisional.** They were derived for
+  dry contacts closing to 0 Ω. An NPN output closes to its saturation voltage
+  instead, which shifts every active band upward — enough that at 0.5 V a
+  wiring fault decodes as a normal end-stop, and at 1.5 V an actively
+  signalling sensor decodes as *no sensor active*. Both are silent
+  mis-decodes. `Vsat` is not stated in either supplied document and must be
+  measured, then the resistors and thresholds re-derived, before the schematic
+  is committed (TDS §6). Recommended at the same time: merge "both active" and
+  "cable shorted" into one fault band — they are both impossible states, both
+  set the same status bit, and merging them recovers most of the lost margin.
+- **New failure mode to design out:** with powered sensors, a break in the +V
+  conductor alone kills both while the EOL resistor keeps the loop reading
+  healthy. Dry contacts did not have this. Fixable by deriving part of the
+  pull-up from the sensors' +V at the far end.
+
 ### Notes
 
 - `documentation/` contains a Mann Hwa / Zhongyang ZY-series encoder
