@@ -1,5 +1,6 @@
 /*
- * Host test for the FR-E04 opening scaling — compiles the SHIPPED code
+ * Host test for the FR-E04 opening scaling and the FR-E20 percentage —
+ * compiles the SHIPPED code
  * (../src/scale.c), not a copy of it.
  *
  * Build and run (any host compiler; MinGW on this bench):
@@ -16,7 +17,8 @@
  * Covered: both mounting senses, the offset behaviour at and beyond each
  * calibration point, the overflow corners, the minimum legal span, the
  * unreachability of the 65535 fault sentinel, and monotonicity swept across the
- * entire 10-bit ADC range in both senses.
+ * entire 10-bit ADC range in both senses — plus the FR-E20 percentage helper at
+ * its clamps, with an offset, and swept for monotonicity.
  */
 
 #include <stdio.h>
@@ -94,6 +96,31 @@ int main(void)
 
 	/* ---- cal_span is order-independent ---- */
 	ck("cal_span symmetric",            cal_span(100, 900) == cal_span(900, 100), 1);
+
+	/* ---- FR-E20 percentage of travel ---- */
+	ck("pct: at closed point",          scale_percent(0,     0, 20000), 0);
+	ck("pct: at full travel",           scale_percent(20000, 0, 20000), 1000);
+	ck("pct: midpoint",                 scale_percent(10000, 0, 20000), 500);
+	ck("pct: with offset, at closed",   scale_percent(500, 500, 20000), 0);
+	ck("pct: with offset, at open",     scale_percent(20500, 500, 20000), 1000);
+	ck("pct: with offset, midpoint",    scale_percent(10500, 500, 20000), 500);
+	ck("pct: below offset clamps to 0", scale_percent(0,   500, 20000), 0);
+	ck("pct: above travel clamps",      scale_percent(65534, 0, 20000), 1000);
+	ck("pct: halving travel doubles",   scale_percent(5000,  0, 10000), 500);
+	ck("pct: fault sentinel clamps",    scale_percent(65535, 0, 20000), 1000);
+	ck("pct: travel=0 guarded",         scale_percent(1000,  0, 0), 0);
+	ck("pct: max operands no overflow", scale_percent(65534, 0, 1), 1000);
+
+	/* percentage must be monotonic in the opening, like the opening itself */
+	{
+		uint32_t prev = 0; int mono = 1;
+		for (uint32_t o = 500; o <= 20500; o += 7) {
+			uint32_t v = scale_percent((uint16_t)o, 500, 20000);
+			if (v < prev) { mono = 0; break; }
+			prev = v;
+		}
+		ck("pct: monotonic sweep", (uint32_t)mono, 1);
+	}
 
 	printf("\n%s\n", fails ? "*** FAILURES ***" : "all corners pass");
 	return fails != 0;

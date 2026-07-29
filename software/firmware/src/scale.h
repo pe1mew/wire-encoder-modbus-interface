@@ -80,4 +80,27 @@ static inline uint32_t cal_span(uint16_t a, uint16_t b)
 uint16_t scale_opening(uint16_t raw, uint16_t offset, uint16_t travel,
                        uint16_t raw_closed, uint16_t raw_open);
 
+/**
+ * @brief Express an opening as a percentage of full travel (FR-E20).
+ *
+ * @code
+ *   percent[0.1 %] = (opening - offset) * 1000 / travel
+ * @endcode
+ *
+ * For a window the percentage is arguably the natural unit and the millimetres
+ * are the implementation detail — so this exists to spare every master the same
+ * division. Derived from the *instantaneous* opening, so it tracks the value a
+ * positioning loop actually reads.
+ *
+ * @param open_0_1mm Window opening from @ref scale_opening, 0.1 mm units.
+ * @param offset     40001 — the opening reported at the closed point.
+ * @param travel     40004 — full travel, 0.1 mm. Must be non-zero (the 40004
+ *                   range starts at 1); guarded anyway.
+ * @return 0..1000, i.e. 0.0 %..100.0 %, clamped.
+ *
+ * @note Largest intermediate is 65534 x 1000 = 65 534 000, comfortably inside
+ *       `uint32_t` — a far easier bound than @ref scale_opening's.
+ */
+uint16_t scale_percent(uint16_t open_0_1mm, uint16_t offset, uint16_t travel);
+
 #endif /* SCALE_H */

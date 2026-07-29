@@ -6,8 +6,8 @@
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
 | Checked against | `greenhouse-Controller/design/windowPositionSensorRequirements.MD`, dated 2026-07-28 (marked PRELIMINARY STUDY — not adopted) |
-| This design | `design/TDS.md` **v0.4**, `design/description.md` |
-| Status | Updated after TDS v0.4, which closed the direction-of-travel and environmental findings of the first pass. |
+| This design | `design/TDS.md` **v0.5**, `design/description.md` |
+| Status | Updated through TDS v0.5. The two gaps this analysis originally raised are both closed; what remains is listed in §4. |
 
 ---
 
@@ -34,11 +34,13 @@ this design satisfies all three by construction.
 | Environment (§5) | NF-WP03…08 | **Addressed** by the §4.5 enclosure strategy and NFR-ENV02…05 — except NF-WP03's +70 °C, which the end switch caps at +65 °C, and the draw-wire unit's own cycle life |
 | Failure behaviour (§6) | FR-WP16…20 | **Met** for the parts that are the sensor's to meet |
 
-Counting only what is this device's responsibility: **26 met, 3 met with
-caveats, 4 belong to the controller** — plus one procurement condition
-(NF-WP08 wiper life) for the draw-wire unit. The one knowing shortfall is
-**NF-WP03's upper temperature limit**: +65 °C against +70 °C asked, set by the
-chosen end-switch sensor and resolvable only by substituting it.
+Counting only what is this device's responsibility: **27 met, 3 met with
+caveats, 4 belong to the controller.** The procurement conditions this
+analysis originally raised — wiper life and mechanism accuracy — are both
+closed by the supplier specification. The three that remain are in §4, and
+only one of them is a requirement missed outright rather than narrowed with
+its cause named: **NF-WP05, because the draw-wire unit is IP50 and lives
+outside the box.**
 
 ---
 
@@ -83,10 +85,10 @@ short enough that each poll lands on a fresh window.
 | NF-WP01 | Supply should match what is distributed (+24 V) | ✅ **Met** | The power chain accepts **24 V**. The field cable enters through a gland and terminates inside the enclosure (§4.5), so the incoming conductors are +24 V/GND/A/B on the installation's own terms rather than requiring a particular plug |
 | NF-WP02 | Reuse the junction arrangement; daisy-chain, no stubs, termination practice | ✅ **Met** | Two connectors for daisy-chaining, 120 Ω terminator behind a jumper, A/B fail-safe bias, TVS — all inside the sealed enclosure, cables glanded |
 
-### 2.4 Environment — closed in TDS v0.4
+### 2.4 Environment — closed in TDS v0.4, ingress figure settled in v0.5
 
 The first pass of this analysis found nothing specified here. TDS §4.5 and
-NFR-ENV02…05 now cover it: an IP67 enclosure with every connector inside it,
+NFR-ENV02…05 now cover it: an IP65 enclosure with every connector inside it,
 field cables through glands, terminal blocks for the sensor and switch loop,
 mounted out of direct UV, and the board itself protected against condensation
 rather than relying on the seal alone.
@@ -95,7 +97,7 @@ rather than relying on the seal alone.
 |---|---|---|---|
 | NF-WP03 | −20 °C to +70 °C | ⚠️ **Low end met, high end 5 °C short** | NFR-ENV01 is now **−25 °C to +65 °C** (narrowed 2026-07-29). The cold end has margin; the hot end does not reach +70 °C because the **LJ18A3-8-Z/BX end switch is rated to +65 °C** and is the narrowest part in the chain — the electronics would have carried +70 °C. **This is the one requirement the design knowingly does not meet in full.** It matters because the sensor sits at the window frame, exactly where the solar gain that motivated the +70 °C figure occurs, even though measured greenhouse air peaks at 33 °C. Resolution is a survey of the mounting position; if it can exceed 65 °C, the fix is a wider-range end switch |
 | NF-WP04 | 100 % RH, condensing | ✅ **Met** | **NFR-ENV02.** Sealed and glanded enclosure, plus protection of the board itself against condensation (conformal coating the recommended default) — because a sealed box in a swinging temperature still breathes. The acceptance criterion is a condensing-night cycle, which is AT-WP08 |
-| NF-WP05 | IP65 minimum, IP67 preferred | ⚠️ **Enclosure yes, sensor no** | **NFR-ENV03: IP67.** The earlier RJ45 objection dissolves once the connectors are *inside* the box: ingress protection is a property of the enclosure and its glands, so an ordinary connector in a sealed enclosure is fine (§4.5). **But the draw-wire unit itself is only IP50** and necessarily sits outside the box on the window frame. That is now the weakest environmental point in the design — see TDS §6 |
+| NF-WP05 | IP65 minimum, IP67 preferred | ⚠️ **Enclosure meets the minimum; the sensor does not** | **NFR-ENV03: IP65.** The earlier RJ45 objection dissolves once the connectors are *inside* the box: ingress protection is a property of the enclosure and its glands, so an ordinary connector in a sealed enclosure is fine (§4.5). The selected **Kopp 99966478 is IP65** — the stated minimum, and NFR-ENV03 was narrowed to match it rather than claim an IP67 the BOM does not deliver. The study's IP67 preference was for hardware *at the aperture*; this box is not. **But the draw-wire unit itself is only IP50** and necessarily sits outside it on the window frame. That is the weakest environmental point in the design — see §4 |
 | NF-WP06 | UV and greenhouse chemical resistance | ✅ **Met** | **NFR-ENV04.** Mounted out of direct UV inside the greenhouse structure, which is the shaded-position answer; where an installation cannot guarantee that, the requirement falls back to a UV-stabilised enclosure |
 | NF-WP07 | Tolerate motor vibration and end-stop shock without drift | ✅ **Met** | **NFR-ENV05**, with a 100-cycle acceptance criterion covering both the persisted calibration and mechanical mounting drift |
 | NF-WP08 | ~25 000 cycles / 20 years; **contacting technologies must be assessed** | ✅ **Met on both counts.** The end switches are inductive proximity sensors — non-contact, so the concern does not apply. The draw-wire unit is specified at **>100 000 cycles**, 4× the ~25 000 needed over twenty years | The sensor is a potentiometer — precisely the contacting wiper technology this requirement singles out. A conductive-plastic element will manage 25 000 strokes comfortably; a cermet or wirewound one may not. **This must be specified when the draw-wire unit is bought.** Partial mitigation: the two-point calibration is re-teachable, so wear that shifts the endpoints can be corrected in the field rather than requiring replacement |
@@ -141,16 +143,41 @@ for diagnostics, not for stopping the motor.
 
 ## 4. Gaps that need a design decision
 
-In rough order of how much they would cost to fix late:
+**Both gaps this analysis originally raised are now closed**, by the
+draw-wire supplier specification found in the product images
+(`documentation/product-images/readme.md`):
 
-1. **Potentiometer life (NF-WP08).** A procurement specification, not a
-   firmware one, but it belongs on the checklist: **conductive-plastic
-   element, ≥100 k cycles**, when the draw-wire unit is chosen.
+| Originally raised | Closed by |
+|---|---|
+| Potentiometer life (NF-WP08) — "specify a conductive-plastic element" | **>100 000 cycles** specified, 4× the ~25 000 needed over twenty years |
+| Sensor accuracy (FR-WP05/06) — "the mechanism's share must be specified" | **0.2 % comprehensive error**, an order of magnitude inside the ±2 % asked |
 
-2. **Sensor accuracy specification (FR-WP05/06).** The firmware budget is
-   ±0.1 %; the requirement is ±1 % repeatability total. That leaves ample
-   room for the mechanism, but the mechanism's share must be specified when
-   buying rather than assumed.
+Three gaps have replaced them. Two arrived with the parts that were chosen
+afterwards, which is the ordinary way of things — a compliance analysis
+against a *design* becomes an analysis against a *bill of materials* as soon
+as parts are picked, and the narrowest part sets the answer.
+
+1. **The draw-wire unit is IP50 and sits outside the enclosure (NF-WP05).**
+   This is the weakest environmental point in the design and the only one
+   where a requirement is missed outright rather than narrowed. NF-WP05 asks
+   ≥IP65 of the sensor; IP50 is dust-protected and not water-protected, in a
+   greenhouse that condenses most nights. The IP65 box protects the
+   electronics and does nothing for the sensor. Options: a sheltered mounting
+   position, a shroud, or a higher-rated unit.
+
+2. **Ambient ceiling +65 °C against +70 °C asked (NF-WP03).** Set by the
+   LJ18A3-8-Z/BX end switch and now stated honestly in NFR-ENV01 rather than
+   claimed and unmet. Resolvable by survey — if the mounting position cannot
+   exceed 65 °C the gap is theoretical — or by a wider-range switch.
+
+3. **Address configurability (FR-WP11).** A solder jumper giving two fixed
+   addresses, not an arbitrary one. Adequate for a single M3 sensor and clear
+   of the addresses in use; a constraint only if the fleet grows. Unchanged
+   since the first pass and deliberate (FR-MB07).
+
+Note what is *not* on this list any more: the enclosure. NFR-ENV03 was
+narrowed from IP67 to IP65 to match the selected Kopp 99966478, which meets
+NF-WP05's stated minimum for hardware not mounted at the aperture.
 
 ---
 
@@ -201,11 +228,13 @@ Still open, and informed by the study:
   measures the drift directly, without relying on the controller's
   travel-time model the way their commanded-versus-measured scheme does.
   Analysis in `design/scratchBook.md` §Q1, tracked in TDS §6.
-- **A signed movement rate would serve FR-WP20 better** than the current
-  unsigned magnitude — the controller wants to know a jump's direction as
-  well as its size, and for a hanging flap "moving down" and "moving up"
-  have different mechanical meanings (their §1.4 item 3: the drive is
-  asymmetric, and directional hysteresis is expected).
+- **The movement rate became signed** (FR-E10, 2026-07-29), which serves
+  FR-WP20 better than a magnitude: the controller sees a jump's direction as
+  well as its size, and for a hanging flap "moving down" and "moving up" have
+  different mechanical meanings (their §1.4 item 3 — the drive is asymmetric
+  and directional hysteresis is expected). A **percentage-of-travel register**
+  (30015, FR-E20) was added at the same time, so a master no longer divides by
+  40004 to get the number it actually wants.
 
 ---
 

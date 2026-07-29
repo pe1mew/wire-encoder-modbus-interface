@@ -42,8 +42,64 @@ that also monitors its own cable.
 - Design document chain seeded: `design/README.md` (index),
   **`description.md`** (functional description in prose),
   **`requirementsCompliance.md`** (check against the greenhouse-Controller
-  M3 requirements study), **`TDS.md` v0.4**, `softwareArchitecture.md`, `driverDevelopment.md`,
+  M3 requirements study), **`TDS.md` v0.5**, `softwareArchitecture.md`, `driverDevelopment.md`,
   `integrationPlan.md`, `scratchBook.md`.
+- **`TDS.md` v0.5 — auto-calibration, and two registers that pay for
+  themselves twice.**
+
+  *Auto-calibration from the end switches* (the question asked in
+  `scratchBook.md` Q1) is now specified as two cooperating halves rather than
+  a single automatic behaviour, because letting a stop silently overwrite a
+  calibration point would let one bad reading move every value the device has
+  ever reported. **FR-E18** does the observing: whenever the switch loop
+  reports a stop, the raw ADC code at that moment is captured and published in
+  new input registers 30013 (closed end) and 30014 (open end). It is inert —
+  the device reports what it saw and changes nothing. **FR-E19** does the
+  committing, and only when told to: writing 1 to new holding register 40007
+  sets status bit 5, and the bit clears only when **both** ends have been
+  reached *and* both captured values have been read back over the bus. The
+  read-back is the interesting part of the handshake — it makes the master's
+  own confirmation a precondition, so a teach cannot complete on values nobody
+  ever looked at. 40007 is deliberately **not persisted**: a teach in progress
+  must not survive a power cut. The commit re-checks the 64-count minimum span,
+  because an internal write bypasses the FR-MB19 range check that a Modbus
+  write would have hit.
+
+  FR-E18 raises a question the device cannot answer from the loop alone —
+  *which* stop was reached, given that the §4.4 ladder resolves "a stop" and
+  not "which stop", and that an uncalibrated device cannot infer it from
+  position either. The **signed movement rate** settles it. Register 30012
+  becomes a **signed int16** (positive = opening, negative = closing), which
+  was worth doing on its own — a master can now distinguish a window opening
+  from one closing without differencing successive polls — and its sign is
+  also what FR-E18 uses to attribute a capture, falling back to proximity only
+  when the device was stationary.
+
+  New **FR-E20** adds **percentage of full travel** in input register 30015,
+  0.1 % resolution, sharing 30001's 65535 fault sentinel. Trivially derivable
+  by the master, but a window is a thing people think about in percentages,
+  and putting the conversion here means one definition of "fully open" rather
+  than one per client. `scale_percent()` lives in the host-tested `scale.c`
+  alongside the opening arithmetic; the host suite is now **38 cases**.
+
+- **`TDS.md` v0.5 — NFR-ENV03 narrowed from IP67 to IP65**, with the selected
+  **Kopp 99966478** box named as what sets the figure — the same treatment the
+  temperature ceiling got from the LJ18A3 end switch. The principle is that a
+  requirement should state what the bill of materials actually delivers, and
+  name the part that limits it, rather than assert a number nothing in the
+  design meets. IP65 is the greenhouse study's stated *minimum*; its
+  preference for IP67 was written for hardware at the aperture, which may be
+  rain-wetted with the vent open, and this box holds only the electronics.
+  With that settled, `requirementsCompliance.md` §4 was rewritten: both gaps
+  it originally raised — potentiometer life and mechanism accuracy — are
+  **closed** by the draw-wire supplier specification (>100 000 cycles, 0.2 %
+  comprehensive error). Three gaps replace them, two of which arrived with
+  the parts chosen since, which is what happens when a compliance analysis
+  against a design becomes one against a bill of materials. Only one is a
+  requirement *missed* rather than narrowed with its cause named: the
+  **draw-wire unit is IP50 and sits outside the enclosure**, so the box that
+  now satisfies NF-WP05 protects the electronics and does nothing for the
+  sensor hanging on the window frame.
 - **`TDS.md` v0.4** — the opening scaling became **direction-agnostic**
   (FR-E04): the two calibration points may be given in either order, so a
   draw-wire mounted such that the wiper code *falls* as the window opens
@@ -63,7 +119,7 @@ that also monitors its own cable.
   bounded, and it would have left the averaging, envelope and rate registers
   without the regular cadence they need.)
 
-  And it closes the environmental questions: §4.5 records the IP67 enclosure
+  And it closes the environmental questions: §4.5 records the IP65 enclosure
   with all connectors inside it, glanded field cables, terminal blocks for the
   sensor and switch loop, and a **pressure-equalisation vent plug** — which
   matters more than it looks, because a fully sealed box uses its own seals as

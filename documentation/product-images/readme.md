@@ -32,7 +32,7 @@ appears nowhere else in the repository.** Those are listed first.
 | Shielding | Fitted | Helps with the actuator-noise concern |
 
 > ⚠️ **The draw-wire unit is only IP50, and it lives outside the enclosure.**
-> The IP67 box and its glands protect the electronics; they do nothing for the
+> The IP65 box and its glands protect the electronics; they do nothing for the
 > sensor itself, which hangs on the window frame in an environment that
 > condenses most nights. IP50 means dust-protected and *not* water-protected.
 > This is recorded as an open item in `design/TDS.md` §6 — the options are a

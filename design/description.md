@@ -102,6 +102,9 @@ for:
 **Where the window is**
 
 - The **instantaneous opening**, updated once per measurement window.
+- The same opening as a **percentage of full travel** (0.0–100.0 %), which for
+  a window is usually the number people actually want — the millimetres are
+  the implementation detail.
 - The **averaged opening**, smoothed over a configurable period.
 - The **minimum and maximum** opening seen within the current averaging
   period — the movement envelope. These tell a master that the window moved
@@ -111,9 +114,11 @@ All four are in units of 0.1 mm.
 
 **How it is moving**
 
-- A **movement rate**: how far the opening changed over the last measurement
-  window, expressed in 0.1 mm/s. Useful for answering "is the actuator
-  actually running?" — it reads zero when the window is at rest.
+- A **movement rate**: how fast the opening is changing, in 0.1 mm/s, and in
+  which direction — **positive while opening, negative while closing**. Useful
+  for answering "is the actuator actually running, and which way?"; it reads
+  zero at rest. This is the only signed value the device reports, so a master
+  must read it as a signed 16-bit integer.
 
 **Whether it is at a stop**
 
@@ -262,11 +267,14 @@ The device is designed to live **inside a greenhouse**: warm, condensing on
 most nights, and chemically unkind, but not in direct sunlight and not
 rain-wetted.
 
-- The electronics sit in an **IP67 enclosure**. Every field cable — bus,
-  sensor, end switches — enters through a **waterproof gland** sized to that
-  cable, and *all* connectors and terminations are inside the box. Ingress
-  protection is a property of the enclosure and its glands, not of any
-  individual connector.
+- The electronics sit in an **IP65 enclosure** — protected against water
+  jets from any direction. Every field cable — bus, sensor, end switches —
+  enters through a **waterproof gland** sized to that cable, and *all*
+  connectors and terminations are inside the box. Ingress protection is a
+  property of the enclosure and its glands, not of any individual connector.
+  Note that this covers the *electronics*: the draw-wire unit itself is only
+  IP50 and hangs outside on the window frame, which is the weakest
+  environmental point in the design.
 - The draw-wire sensor and the end-switch loop land on **terminal blocks**
   inside the enclosure, so they can be wired in the field with a screwdriver
   rather than a crimp tool.
@@ -334,9 +342,5 @@ Open design items, tracked in `design/TDS.md` §6 with the analysis in
   (storage wear, and the device does not know which end fired). Under
   consideration as a reported value plus an armed one-shot, not as an
   always-on behaviour.
-- **Opening is reported only in millimetres.** A master wanting a percentage
-  must divide by the configured travel itself.
-- **Movement rate has no sign** — it reports speed, not whether the window is
-  opening or closing.
 - **Maximum travel is 6553.4 mm** at the current 0.1 mm resolution. Ample for
   a window vent, but it is a fixed limit of the register map.

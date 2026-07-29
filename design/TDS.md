@@ -4,7 +4,7 @@
 |--------------|-------------------------------------------|
 | Document     | Technical Design Specification            |
 | Project      | `wire-encoder-modbus-interface` (DUT firmware) |
-| Version      | 0.4 (draft — §2 Modbus contract inherited and proven; §2.7/§2.8 register map new; §3 lifecycle inherited + new FR-E measurement series. v0.4 makes the opening scaling direction-agnostic (FR-E04/FR-E06), adds a minimum calibration span, and closes §4's enclosure and environmental questions; v0.3 made the end switches mandatory on a supervised ADC ladder) |
+| Version      | 0.5 (draft — §2 Modbus contract inherited and proven; §2.7/§2.8 register map new; §3 lifecycle inherited + new FR-E measurement series. v0.5 adds the FR-E17 maximum-age contract, FR-E18 end-stop capture, FR-E19 commanded teach and FR-E20 percentage register, makes the movement rate signed, and settles the enclosure at IP65; v0.4 made the opening scaling direction-agnostic; v0.3 made the end switches mandatory on a supervised ADC ladder) |
 | Date         | 2026-07-28                                |
 | Status       | **Draft.** The Modbus half of this document is settled — it is the sibling project's verified contract. The measurement half (§2.7/§2.8 semantics, §3.3–§3.5, §4) is a first draft written before any hardware exists, and is expected to move. Open items in §6. |
 | Related docs | `design/description.md` (the same behaviour in prose, for integrators and installers); `design/scratchBook.md` (working notes and the reasoning behind the choices); sibling [`windmeters-modbus-interface`](https://github.com/pe1mew/windmeters-modbus-interface) `design/TDS.md` v0.9 — the source of §2, §3.1/§3.2, §5 and their bench evidence |
@@ -130,9 +130,9 @@ Key design decisions fixed in this version:
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-MB13 | Must | A read request for any register address not listed in §2.7 or §2.8 shall return exception 02 (Illegal Data Address). | FC04 or FC03 request for raw address 0x0020; confirm exception 02. |
-| FR-MB14 | Must | A multi-register read (FC03/FC04) whose range spans at least one unimplemented address shall return exception 02 for the entire request. No partial data shall be returned. | FC04 request starting at the last valid input address (0x000D) with count 2; confirm exception 02, not partial data. |
+| FR-MB14 | Must | A multi-register read (FC03/FC04) whose range spans at least one unimplemented address shall return exception 02 for the entire request. No partial data shall be returned. | FC04 request starting at the last valid input address (0x000E) with count 2; confirm exception 02, not partial data. |
 | FR-MB15 | Must | A write to an unimplemented holding register address shall return exception 02. | FC06 write to raw holding address 0x0020; confirm exception 02 and no side effect. |
-| FR-MB27 | Must | The firmware shall implement the §2.7/§2.8 register map in full: raw input addresses 0x0000–0x000D (14 registers) and raw holding addresses 0x0000–0x0006 (7 registers). No mapped register shall return exception 02. | FC04 read of raw 0x0000 quantity 14 returns a normal response with 28 data bytes; FC03 read of raw 0x0000 quantity 7 returns 14 data bytes; FC04 of 0x000E returns exception 02. |
+| FR-MB27 | Must | The firmware shall implement the §2.7/§2.8 register map in full: raw input addresses 0x0000–0x000E (15 registers) and raw holding addresses 0x0000–0x0006 (7 registers). No mapped register shall return exception 02. | FC04 read of raw 0x0000 quantity 15 returns a normal response with 30 data bytes; FC03 read of raw 0x0000 quantity 7 returns 14 data bytes; FC04 of 0x000F returns exception 02. |
 | FR-MB28 | Must | FC03/FC04 requests with quantity = 0 or > 125 shall return exception 03 (Illegal Data Value). FC16 requests with quantity = 0, quantity > 123, or a byte-count field not equal to 2 × quantity shall return exception 03 and shall modify no register. Quantity validation shall be performed before address validation. | FC04 at raw 0x0000 with quantity 0 returns exception 03 (not 02, not an empty data frame) within 200 ms. FC03 with quantity 126 returns exception 03. FC16 to raw 0x0001 with quantity 2 but byte count 5 returns exception 03 and follow-up reads show both registers unchanged. |
 
 ### 2.5 Exception handling
@@ -157,8 +157,13 @@ Key design decisions fixed in this version:
 **New in this project — draft.** Measurement registers 30001–30004 and
 30012 read 0 from reset until the first measurement window completes
 (FR-S23). Identification, status, uptime and counter registers
-(30005–30010) are valid immediately after reset. The map edge is 0x000D
-(14 registers) — an FC04 past it returns exception 02 (FR-MB13).
+(30005–30010) are valid immediately after reset. The map edge is 0x000E
+(15 registers) — an FC04 past it returns exception 02 (FR-MB13).
+
+> **30012 is signed.** It is the only register in the map that is, and a
+> master reading it as unsigned sees ≈65500 for a closing window rather than a
+> small negative number. Two's complement, so `int16_t` on the master side.
+> Everything else in §2.7 and §2.8 is unsigned.
 
 > **A read of 30013/30014 has a side effect while teach is armed** — it is
 > half of the FR-E19 handshake. That is deliberate: it means a master polling
@@ -180,15 +185,16 @@ plausible, stable, wrong reading.
 | `0x0002` | 30003 | Window opening, minimum in the current averaging window | 0.1 mm | 0–65534; 65535 = sensor fault (FR-E08) |
 | `0x0003` | 30004 | Window opening, maximum in the current averaging window | 0.1 mm | 0–65534; 65535 = sensor fault (FR-E08) |
 | `0x0004` | 30005 | Raw ADC code — diagnostic, pre-calibration | counts | 0–1023, 10-bit (FR-E09) |
-| `0x0005` | 30006 | Status flags (normative definition: FR-S33) | bitfield | bit 0 = no completed window yet; bit 1 = averaging accumulator not filled; bit 2 = wiper fault; bit 3 = end of travel reached; bit 4 = end-switch loop fault; bits 5–15 = 0 |
+| `0x0005` | 30006 | Status flags (normative definition: FR-S33) | bitfield | bit 0 = no completed window yet; bit 1 = averaging accumulator not filled; bit 2 = wiper fault; bit 3 = end of travel reached; bit 4 = end-switch loop fault; bit 5 = teach in progress; bits 6–15 = 0 |
 | `0x0006` | 30007 | Identification | — | high byte = build type (0x01); low byte = firmware version (FR-S32) |
 | `0x0007` | 30008 | Uptime since reset | s | 0–65535, saturating (FR-S34) |
 | `0x0008` | 30009 | Bus CRC error count | — | 0–65535, wrapping (FR-S35) |
 | `0x0009` | 30010 | Served request count | — | 0–65535, wrapping (FR-S35) |
 | `0x000A` | 30011 | Seconds since the last valid sensor reading | s | 0–65535, clamped (FR-S36) |
-| `0x000B` | 30012 | Movement rate — magnitude of the opening change over the last measurement window | 0.1 mm/s | 0–65535, clamped (FR-E10) |
+| `0x000B` | 30012 | Movement rate — **signed**; positive = opening, negative = closing | 0.1 mm/s | **two's-complement int16**, −32768…+32767, clamped (FR-E10) |
 | `0x000C` | 30013 | Raw ADC code captured at the last **closed-end** stop event | counts | 0–65535; 0 = no such event since reset (FR-E18) |
 | `0x000D` | 30014 | Raw ADC code captured at the last **open-end** stop event | counts | 0–65535; 0 = no such event since reset (FR-E18) |
+| `0x000E` | 30015 | Window opening as a **percentage of full travel** | 0.1 % | 0–1000; 65535 = sensor fault (FR-E20) |
 
 *Open (§6): whether the movement rate should be signed (opening vs closing)
 rather than a magnitude, and whether a percentage-of-travel register should
@@ -272,7 +278,7 @@ carried-over `board.c` and `mb.c`.)*
 | FR-E07 | Must | A sensor fault — a raw code outside the plausible band, indicating an open or shorted wiper, detectable by toggling the internal pull resistor on PA2 between two conversions and comparing readings — shall cause 30001 to hold the last valid opening for up to 2 s; if the condition persists >2 s, registers 30001–30004 shall report 65535 (sensor fault, §2.7) and status bit 2 (FR-S33) shall be set until valid readings resume. Faulted samples shall be excluded from the averaging engine. | Disconnect the wiper at the connector: 65535 in 30001–30004 and status bit 2 within 3 s; recovery within 2 s of reconnection. A 10-minute full open/close cycle produces no false fault. |
 | FR-E08 | Should | Input registers 30003 and 30004 shall report the minimum and maximum instantaneous opening observed within the current averaging window (rolling, same window semantics as 30002; exact or two-stage per FR-S31), giving the master the movement envelope without polling at window rate. | With the window held at 100.0 mm and one excursion to 800.0 mm lasting 3 s: within one measurement window 30004 reads 8000 ±2 LSB while 30002 stays below 3000; one full averaging window after the excursion ends, 30004 returns to 1000 ±2 LSB. |
 | FR-E09 | Should | The raw ADC code for the last measurement window shall be available in input register 30005 for diagnostic purposes, before offset and scaling are applied (FR-E04). | With the window fully closed and fully open, 30005 reads the two calibration codes ±3 LSB. |
-| FR-E10 | Should | Input register 30012 shall report the magnitude of the opening change between the last two completed measurement windows, expressed as 0.1 mm/s (i.e. scaled by the window duration), clamped at 65535. | With the window driven at a controlled 50.0 mm/s for ≥3 windows, 30012 reads 500 ±5 % once two windows of the movement have completed; with the window at rest it reads 0. |
+| FR-E10 | Should | Input register 30012 shall report the **signed** opening change between the last two completed measurement windows, expressed as 0.1 mm/s (i.e. scaled by the window duration) as a two's-complement 16-bit value: **positive while opening, negative while closing**, zero at rest. It shall be clamped to −32768…+32767 — ±3276.7 mm/s, orders of magnitude beyond any window actuator, so the clamp exists only to make the arithmetic total. | With the window driven at a controlled 50.0 mm/s for ≥3 windows, 30012 reads +500 ±5 % while opening and −500 ±5 % while closing, once two windows of the movement have completed; at rest it reads 0. A master interpreting the register as unsigned sees ≈65036 for the closing case, which is the same bit pattern. |
 
 ### 3.4 Potentiometer front-end
 
@@ -302,10 +308,14 @@ resistor values; the derivation is in `design/scratchBook.md`.
 
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
+| FR-E20 | Should | Input register 30015 shall report the window opening as a percentage of the configured full travel, in units of 0.1 % (0–1000), derived from the *instantaneous* opening (30001) so that it tracks the same value a positioning loop reads. It shall be computed as `(30001 − 40001) × 1000 / 40004`, clamped to 1000, and shall carry the FR-E07 fault sentinel 65535 whenever 30001 does. | With the window at the calibrated closed point 30015 reads 0; at full travel it reads 1000; at the midpoint 500 ±1. Halving 40004 doubles the reported percentage for the same physical position. Disconnecting the wiper drives it to 65535 alongside 30001. |
 | FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the four states of the §4.4 band table: normal, one sensor active, both active, cable fault. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". The bands tile the whole range, and the lowest band is the fault — so a disconnected or shorted input, which the board's own pull-down holds at zero, classifies as a fault rather than as a healthy loop. | At each of the four nominal divider values the classification matches the table and status bit 3 follows. Disconnecting the input at the board reads 0 counts and sets status bit 4. |
 | FR-E15 | Must | The classified switch state shall be debounced in firmware: a change shall be published only after the new state has been observed continuously for ≥20 ms. Sampling and debouncing shall never gate, delay or suppress the FR-MB20 response timing, the measurement path, or the FR-S20 watchdog feed. | Inject a 5 ms bounce burst: bit 3 changes exactly once, with no intermediate toggling visible to a master polling at 50 ms. The FR-MB21 latency histogram matches one taken with the switch input idle, within 2 ms. |
 | FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Disconnect the switch cable: bit 4 sets within 200 ms, bit 3 clears, and 30001 continues to track the window unchanged. Short the cable: same. Close both switches at once: same. Restore: bit 4 clears within 200 ms. |
-| FR-E18 | Should | On every debounced transition into "one sensor active" (FR-E14), the firmware shall capture the current raw wiper code and publish it to **30013** if that stop is the closed end or **30014** if it is the open end, deciding which by whichever of 40005/40006 the captured code lies nearer. Both registers shall read 0 until their first such event since reset. This is a diagnostic only: it shall never alter the calibration of its own accord. | Drive the window to each stop in turn with a known calibration: 30013 and 30014 each read the raw code observed at that stop, within the FR-E03 stability tolerance. Deliberately shift the sensor mounting by a known amount and repeat: the affected register moves by the corresponding number of counts while 40005/40006 are unchanged. Both read 0 after a reset until a stop is next reached. |
+| FR-E18 | Should | On every debounced transition into "one sensor active" (FR-E14), the firmware shall capture the current raw wiper code and publish it to **30013** if that stop is the closed end or **30014** if it is the open end, deciding which by the **direction of the last movement** (FR-E10): a window
+that was opening has reached the open end, one that was closing has reached the
+closed end. Where no direction is known — no movement since reset — it shall
+fall back to whichever of 40005/40006 the captured code lies nearer. Both registers shall read 0 until their first such event since reset. This is a diagnostic only: it shall never alter the calibration of its own accord. | Drive the window to each stop in turn with a known calibration: 30013 and 30014 each read the raw code observed at that stop, within the FR-E03 stability tolerance. Deliberately shift the sensor mounting by a known amount and repeat: the affected register moves by the corresponding number of counts while 40005/40006 are unchanged. Both read 0 after a reset until a stop is next reached. |
 | FR-E19 | Should | The firmware shall support a **commanded teach** of the calibration endpoints, sequenced as follows. (a) A write of 1 to holding register **40007** arms teach: status bit 5 (FR-S33) is set and any previously captured endpoints are discarded. (b) While armed, each stop reached per FR-E18 captures its endpoint as before. (c) When **both** endpoints have been captured since arming **and** the master has read **both** 30013 and 30014, the firmware shall commit them to 40005 and 40006, persist them (FR-S39), clear status bit 5 and reset 40007 to 0. (d) A write of 0 to 40007 aborts at any point, discarding captures and leaving 40005/40006 untouched. The commit shall be refused — leaving teach armed and the captures visible — if the pair would violate FR-E06, so a degenerate teach cannot be committed. 40007 shall not persist across reset (FR-S39). | Arm teach; bit 5 sets. Drive to one stop: bit 5 stays set. Drive to the other: bit 5 still set until both 30013 and 30014 have been read, then clears within one measurement window, with 40005/40006 equal to the captured pair and surviving a subsequent reset. Arm, reach one stop only, then write 40007 = 0: bit 5 clears and 40005/40006 are unchanged. Arm and teach two codes closer than the FR-E06 minimum span: no commit occurs, bit 5 remains set, and the captures stay readable. Arm, then reset the device: bit 5 is clear and 40007 reads 0. |
 
 ### 3.6 Clock and timing
@@ -532,7 +542,7 @@ not rain-wetted. The enclosure strategy follows from that:
 
 | Decision | Consequence |
 |---|---|
-| **IP67 enclosure** | Everything electrical is inside it. Ingress protection is a property of the box and its glands, not of the connectors |
+| **IP65 enclosure** — **Kopp 99966478**, 110 × 110 × 40 mm, 6 entries, 3 × M20 glands supplied (`hardware/Documentation/`) | Everything electrical is inside it. Ingress protection is a property of the box and its glands, not of the connectors. This box sets NFR-ENV03's figure |
 | **All connectors are internal** | The RJ45 bus connectors sit *inside* the enclosure. They are ordinary connectors in a sealed box, not exposed ones, so their own (non-)rating does not matter |
 | **Waterproof cable glands** | Field cables — bus, sensor, switch loop — enter through glands. The gland is the seal |
 | **Pressure-equalisation vent plug** | A hydrophobic membrane vent, IP-rated in its own right. Air passes; liquid water does not |
@@ -561,10 +571,14 @@ see §4.6.
 
 Two BOM notes:
 
-- **Gland sizes are a BOM item, not an afterthought.** Three cable entries
-  (bus, sensor, switches) each need a gland matched to the actual cable
-  diameter to achieve the rated seal. An oversized gland on a thin cable is
-  an open hole with a nut on it.
+- **Gland sizes are a BOM item, not an afterthought.** Each cable entry needs
+  a gland matched to the actual cable diameter to achieve the rated seal. An
+  oversized gland on a thin cable is an open hole with a nut on it.
+- **Count the entries.** The selected box has six and ships with three glands.
+  The installation needs five: bus in, bus out (the daisy chain needs both),
+  draw-wire sensor, end-switch loop, and the vent plug. So two further glands
+  and the vent are still to buy — and the vent consuming an entry is easy to
+  miss when a box is chosen by cable count alone.
 - **The vent has an IP rating of its own**, and it must be at least the
   enclosure's. Mount it where water cannot pool on the membrane, and make
   sure nothing in the installation blocks it.
@@ -607,7 +621,7 @@ no fault flag, nothing visibly wrong.
 |----|----------|-------------|---------------------|
 | NFR-ENV01 | Must | All §2 and §3 requirements shall be met over an ambient temperature range of **−25 °C to +65 °C**. The upper limit is set by the **LJ18A3-8-Z/BX end-switch sensor** (rated −30…+65 °C, §4.4), which is the narrowest part in the chain — not by the electronics, which inherit an industrial-grade part set good to +70 °C or beyond. Substituting a wider-range end switch is the only thing that would raise this figure. | In a climate chamber at both extremes: (a) 10,000 FC04 cycles at 9600 8N1 complete with zero framing/CRC errors; (b) the FR-S17 window measurement passes at its full-range tolerance; (c) the §4.4 switch bands decode correctly at both extremes, since the sensor's saturation voltage is itself temperature-dependent. |
 | NFR-ENV02 | Must | The device shall operate in a **condensing** environment, up to 100 % relative humidity. Two measures are required and neither substitutes for the other: (a) a **pressure-equalisation vent** so the enclosure does not pump moist air and liquid water in through its seals as it cools (§4.5); (b) protection of the assembled board against the moisture films that will still form — conformal coating or an equivalent documented on the BOM — such that **surface leakage from the wiper node to any rail stays above 10 MΩ** under condensing conditions (§4.6). | Cycle the device through a condensing night in the installed enclosure — a temperature swing carrying the internal air below its dew point — while polling continuously: zero read failures, and the reported opening at a fixed sensor position moves by no more than the FR-E03 tolerance. Measure wiper-node-to-rail insulation resistance immediately after the cold soak, with condensate present: ≥10 MΩ. Inspect the glands and the vent for water ingress. |
-| NFR-ENV03 | Must | The enclosure shall be rated **IP67**, with every field cable entering through a gland sized to that cable. All connectors and terminations shall be inside the enclosure (§4.5). | Inspection against the enclosure and gland datasheets; a submersion or spray test per the IP67 definition on a fully assembled and glanded unit. |
+| NFR-ENV03 | Must | The enclosure shall be rated at least **IP65**, with every field cable entering through a gland sized to that cable and every connector and termination inside the enclosure (§4.5). The figure is set by the selected **Kopp 99966478** box (`hardware/Documentation/`), which is IP65; the electronics themselves impose no such limit. IP65 — protection against water jets — is the level the greenhouse study asks of hardware not mounted at the aperture, and this box holds only the electronics. | Inspection against the enclosure and gland datasheets; a spray test per the IP65 definition on a fully assembled and glanded unit, including the vent plug. |
 | NFR-ENV04 | Should | The device shall be mounted out of direct UV exposure (§4.5). Where that cannot be guaranteed for a given installation, the enclosure material shall be UV-stabilised. | Installation inspection. Where the mounting position is exposed, the enclosure datasheet shall state UV stabilisation. |
 | NFR-ENV05 | Must | The device shall tolerate the vibration and end-stop shock of the window actuator without loss of calibration or mechanical drift of the sensor mounting. | After 100 full open/close cycles of the installed mechanism, the reported opening at both end stops is unchanged within FR-E03 tolerance, and the persisted calibration registers read back identical values. |
 | NFR-RES01 | Should | The release build shall occupy no more than 14,336 bytes of flash (87.5% of 16 KB); static RAM (.data + .bss) plus documented worst-case stack shall not exceed 1,792 bytes (87.5% of 2 KB). | The linker map of the release build shows totals at or below the ceilings; the build fails when exceeded (`board_upload.maximum_size` / `maximum_ram_size`). |
@@ -633,11 +647,11 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   choice is 1 mm resolution (65 m) or a 32-bit two-register opening. Decide
   before any master integrates against the map.
 
-- **Percentage-of-travel register.** A master wanting "how far open, in
-  percent" must currently divide 30001 by 40004 itself. A dedicated register
-  (0–1000 = 0.0–100.0 %) is one addition to §2.7 and would make the common
-  case trivial. Not added yet because the map edge is a compatibility
-  commitment.
+- **Percentage-of-travel register — CLOSED (2026-07-29).** Added as 30015
+  (FR-E20), 0–1000 = 0.0–100.0 %, derived from the instantaneous opening. For
+  a window the percentage is arguably the natural unit and the millimetres are
+  the implementation detail, so the common case no longer needs the master to
+  divide.
 
 - **Auto-calibration — SPECIFIED (2026-07-29), one policy still open.**
   FR-E18 (report the raw code seen at each stop, 30013/30014) and FR-E19
@@ -649,18 +663,21 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   sustain (`design/scratchBook.md` §Q1). Revisit only with field data on how
   often the endpoints actually move.
 
-  *Residual:* which stop a capture belongs to is decided by proximity to the
-  existing 40005/40006, which is sound for correcting drift — the case this
-  serves — but circular on a device that has never been calibrated. A
-  first-time teach therefore needs the defaults to straddle the sensor's
-  usable span, or the operator to set 40005/40006 roughly by hand first. A
-  signed movement rate would settle it outright; see the item below.
+  *Residual — largely closed.* Which stop a capture belongs to is now decided
+  by the direction of the last movement (FR-E10 became signed on the same
+  day), which works on an uncalibrated device where the old proximity
+  heuristic was circular. Proximity remains only as the fallback for the case
+  where nothing has moved since reset — reaching a stop without having
+  travelled to it, which in practice means the window was already sitting
+  there at power-on.
 
-- **Movement-rate sign (30012).** Reported as an unsigned magnitude in the
-  current draft (FR-E10). A signed `int16` would distinguish opening from
-  closing at no register cost but halves the range to ±3276.7 mm/s. For a
-  window actuator, knowing the direction is arguably worth more than the
-  range.
+- **Movement-rate sign — CLOSED (2026-07-29).** 30012 is now a signed
+  two's-complement `int16`: positive opening, negative closing (FR-E10). The
+  range halves to ±3276.7 mm/s, which is still three orders of magnitude
+  beyond anything a window actuator does. Direction turned out to be worth
+  more than the range twice over — it also settles which stop an FR-E18
+  capture belongs to, which the proximity heuristic could not do on an
+  uncalibrated device.
 
 - **Direction of opening — CLOSED (v0.4).** FR-E04 now accepts the two
   calibration points in either order, so a mounting where the wiper code falls
@@ -710,7 +727,8 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   the same standard as the enclosure and must not displace the EOL resistor
   from the sensor end.
 
-- **Enclosure and environment — CLOSED (v0.4).** IP67 box, all connectors
+- **Enclosure and environment — CLOSED (v0.4, ingress figure settled v0.5).**
+  IP65 box (Kopp 99966478), all connectors
   inside it, field cables through glands, terminal blocks for the sensor and
   switch loop, mounted out of direct UV (§4.5, NFR-ENV02…05). Residual: gland
   sizes are a BOM item, and the condensation strategy (conformal coating is
@@ -728,9 +746,18 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   and needs its own block-aggregation rule. To be settled in
   `design/integrationPlan.md` stage E.
 
+- **Enclosure ingress — DECIDED (2026-07-29): NFR-ENV03 narrowed to IP65,
+  set by the Kopp 99966478.** The same treatment as the temperature ceiling:
+  state the figure the bill of materials actually delivers and name the part
+  that sets it. IP65 is the greenhouse study's stated minimum, and its
+  preference for IP67 was written for hardware *at the aperture, which may be
+  rain-wetted with the vent open* — this box holds the electronics and is
+  mounted inside the structure. *Residual:* the box is not the exposed part.
+  The draw-wire unit is, and it is IP50 — see below.
+
 - **The draw-wire unit is IP50 and sits outside the enclosure — open.** Its
   specification (transcribed in `documentation/product-images/readme.md`)
-  gives IP50: dust-protected, **not** water-protected. The IP67 enclosure and
+  gives IP50: dust-protected, **not** water-protected. The IP65 enclosure and
   its glands protect the electronics and do nothing for the sensor, which
   hangs on the window frame in an environment that condenses most nights.
   Options are a sheltered mounting position, a shroud over the unit, or a
@@ -754,9 +781,11 @@ Everything here is genuinely undecided. Items are removed (or kept with a
 
 ---
 
-*End of Technical Design Specification v0.4 (2026-07-28: direction-agnostic
-scaling with a minimum calibration span, and the §4.5 enclosure /
-NFR-ENV02…05 environmental requirements; v0.3 mandatory end switches on a
-supervised ADC ladder (PC4) with the address jumper on PC1; §2/§3.1/§3.2/§5
-inherited from `windmeters-modbus-interface` TDS v0.9, §2.7/§2.8 and the
-FR-E series new).*
+*End of Technical Design Specification v0.5 (2026-07-29: FR-E17 maximum-age
+contract, FR-E18 end-stop capture, FR-E19 commanded teach, FR-E20 percentage
+register, signed movement rate, and the enclosure settled at IP65; v0.4
+direction-agnostic scaling with a minimum calibration span and the §4.5
+enclosure / NFR-ENV02…05 environmental requirements; v0.3 mandatory end
+switches on a supervised ADC ladder (PC4) with the address jumper on PC1;
+§2/§3.1/§3.2/§5 inherited from `windmeters-modbus-interface` TDS v0.9,
+§2.7/§2.8 and the FR-E series new).*

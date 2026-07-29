@@ -6,10 +6,15 @@
  * @ref mb.h "Modbus driver" via @ref regs_cfg(). Built during integration
  * stage C (`design/integrationPlan.md`).
  *
- * The map is fixed (FR-MB27): raw input addresses 0x0000–0x000D (14 registers)
+ * The map is fixed (FR-MB27): raw input addresses 0x0000–0x000E (15 registers)
  * and raw holding addresses 0x0000–0x0006 (7 registers). Holding 0x0006 (40007)
  * is the teach command and is the one holding register that does @b not
  * persist (FR-E19).
+ *
+ * @warning Input register 30012 (movement rate) is the one **signed** value in
+ *          the map — two's-complement `int16`, positive opening, negative
+ *          closing (FR-E10). A master reading it as unsigned sees ≈65500 for a
+ *          closing window. Everything else is unsigned.
  *
  * @par Current state — no measurement service
  * The encoder driver does not exist yet (`design/driverDevelopment.md` §3), so
@@ -164,7 +169,8 @@ void regs_window_aborted(void);
  *
  * @param raw          Raw ADC code for this window → 30005 (FR-E09).
  * @param open_0_1mm   Scaled, offset-applied window opening → 30001 (FR-E04).
- *                     Ignored when @p valid is false.
+ *                     Also drives 30015 (percentage, FR-E20) and the signed
+ *                     30012 rate (FR-E10). Ignored when @p valid is false.
  * @param valid        False when the sample could not be trusted — drives the
  *                     FR-E07 fault machine (hold the last value for 2 s, then
  *                     report the 65535 sentinel in 30001–30004 and set status

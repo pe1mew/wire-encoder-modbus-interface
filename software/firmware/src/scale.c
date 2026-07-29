@@ -33,3 +33,16 @@ uint16_t scale_opening(uint16_t raw, uint16_t offset, uint16_t travel,
 	/* 65535 is the FR-E07 fault sentinel and must stay unreachable here. */
 	return (pos > 65534u) ? 65534u : (uint16_t)pos;
 }
+
+uint16_t scale_percent(uint16_t open_0_1mm, uint16_t offset, uint16_t travel)
+{
+	/* scale_opening() already clamps to [offset, offset + travel], so the
+	 * subtraction cannot go negative in normal use — but this is also called
+	 * with the FR-E07 sentinel and with values from a half-configured device,
+	 * so both edges are guarded rather than assumed. */
+	if (open_0_1mm <= offset || travel == 0u)
+		return 0u;
+
+	const uint32_t p = ((uint32_t)(open_0_1mm - offset) * 1000u) / travel;
+	return (p > 1000u) ? 1000u : (uint16_t)p;
+}

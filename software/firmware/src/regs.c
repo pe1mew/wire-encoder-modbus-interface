@@ -106,7 +106,9 @@ static uint16_t r_raw;           /* 30005 raw ADC code (FR-E09)           */
 static uint16_t r_status;        /* 30006 bitfield (FR-S33)               */
 static uint16_t r_uptime_s;      /* 30008 saturating (FR-S34)             */
 static uint16_t r_reading_age_s; /* 30011 (FR-S36)                        */
-static uint16_t r_rate;          /* 30012 movement rate (FR-E10)          */
+static uint16_t r_rate;          /* 30012 SIGNED movement rate (FR-E10)   */
+static uint16_t r_pct;           /* 30015 percent of travel (FR-E20)      */
+static int8_t   last_dir;        /* +1 opening, -1 closing, 0 unknown     */
 static uint16_t r_at_closed;     /* 30013 raw code seen at the closed stop */
 static uint16_t r_at_open;       /* 30014 raw code seen at the open stop   */
 
@@ -155,6 +157,7 @@ static uint16_t input_read(uint16_t addr, bool *ok)
 	case 0x000B: return r_rate;
 	case 0x000C: teach_read_closed = true; return r_at_closed;
 	case 0x000D: teach_read_open = true;   return r_at_open;
+	case 0x000E: return r_pct;
 	default:
 		*ok = false; /* FR-MB13/14: exception 02 past the map edge */
 		return 0;
@@ -351,11 +354,16 @@ void regs_note_end_stop(void)
 	 * model of how long the actuator ran. */
 	const uint16_t raw = r_raw;
 
-	/* Which stop? The ladder deliberately does not say (TDS §4.4), so decide by
-	 * whichever calibrated endpoint the reading lies nearer. Sound while the
-	 * calibration is approximately right, which is the case this exists to
-	 * serve — correcting drift, not calibrating from nothing. */
-	if (cal_span(raw, h_raw_closed) <= cal_span(raw, h_raw_open)) {
+	/* Which stop? The ladder deliberately does not say (TDS §4.4). Direction of
+	 * travel answers it outright — a window that was opening has arrived at the
+	 * open end — and, unlike comparing the reading against the calibration,
+	 * that works on a device whose calibration is not yet trustworthy. Fall
+	 * back to proximity only when nothing has moved since reset, which in
+	 * practice means the window was already sitting at the stop at power-on. */
+	const bool at_open = (last_dir > 0) ? true
+	                   : (last_dir < 0) ? false
+	                   : (cal_span(raw, h_raw_open) < cal_span(raw, h_raw_closed));
+	if (!at_open) {
 		r_at_closed = raw;
 		teach_got_closed = true;
 		teach_read_closed = false; /* a new value has to be read again */
@@ -501,6 +509,7 @@ void regs_second_tick(void)
 			r_open_avg = OPEN_FAULT_SENTINEL;
 			r_open_min = OPEN_FAULT_SENTINEL;
 			r_open_max = OPEN_FAULT_SENTINEL;
+			r_pct = OPEN_FAULT_SENTINEL; /* FR-E20 follows 30001 */
 		}
 	}
 }
@@ -532,16 +541,25 @@ void regs_publish_opening(uint16_t raw, uint16_t open_0_1mm, bool valid)
 
 	r_open_inst = open_0_1mm; /* 30001 */
 
-	/* FR-E10 movement rate: |Δopening| over one window, in 0.1 mm/s. Needs two
-	 * consecutive valid windows — a fault, or a window-duration change,
-	 * invalidates the baseline. Worst case 65534 × 1000 = 65 534 000,
-	 * comfortably inside uint32_t. */
+	r_pct = scale_percent(open_0_1mm, h_offset, h_travel); /* 30015, FR-E20 */
+
+	/* FR-E10 movement rate: SIGNED Δopening over one window, in 0.1 mm/s —
+	 * positive opening, negative closing. Needs two consecutive valid windows;
+	 * a fault or a window-duration change invalidates the baseline. Worst case
+	 * ±65534 × 1000 = ±65 534 000, comfortably inside int32_t.
+	 *
+	 * The sign is not merely nicer to read: it is what tells FR-E18 which stop
+	 * a capture belongs to, on a device whose calibration cannot yet be
+	 * trusted to answer that. */
 	if (have_prev_open) {
-		uint16_t d = (open_0_1mm > prev_open)
-		                 ? (uint16_t)(open_0_1mm - prev_open)
-		                 : (uint16_t)(prev_open - open_0_1mm);
-		uint32_t v = ((uint32_t)d * 1000u) / (h_window ? h_window : 1u);
-		r_rate = (v > 65535u) ? 65535u : (uint16_t)v;
+		int32_t d = (int32_t)open_0_1mm - (int32_t)prev_open;
+		int32_t v = (d * 1000) / (int32_t)(h_window ? h_window : 1u);
+		if (v > 32767) v = 32767;      /* ±3276.7 mm/s — the clamp exists to */
+		if (v < -32768) v = -32768;    /* make the arithmetic total, not     */
+		r_rate = (uint16_t)(int16_t)v; /* because a window could get there   */
+		if (d > 0) last_dir = 1;
+		else if (d < 0) last_dir = -1; /* zero leaves it sticky: the last
+		                                * direction of travel still stands */
 	} else {
 		r_rate = 0;
 	}
