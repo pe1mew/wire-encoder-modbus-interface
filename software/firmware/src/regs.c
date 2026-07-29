@@ -47,6 +47,11 @@ _Static_assert((RAW_OPEN_DEFAULT > RAW_CLOSED_DEFAULT
 static uint16_t h_raw_closed = RAW_CLOSED_DEFAULT; /* 40005: 0..65534 */
 static uint16_t h_raw_open = RAW_OPEN_DEFAULT;     /* 40006: 1..65535 */
 
+/* 40007 teach command (FR-E19). Deliberately NOT in persist_settings_t: a
+ * teach left armed across a power cut would be a surprise, not a convenience,
+ * so this reads 0 after every reset whatever it held before. */
+static uint16_t h_teach;
+
 #ifdef TEST_HOOKS
 static uint16_t test_hang;       /* 0x00FF, TEST builds only (FR-S20 hook) */
 #endif
@@ -58,6 +63,7 @@ static const mb_holding_t holdings[] = {
 	{0x0003, 1, 65534, &h_travel},     /* 40004 full travel (0.1 mm)      */
 	{0x0004, 0, 65534, &h_raw_closed}, /* 40005 raw code, window closed   */
 	{0x0005, 1, 65535, &h_raw_open},   /* 40006 raw code, fully open      */
+	{0x0006, 0, 1, &h_teach},          /* 40007 teach command (FR-E19)    */
 #ifdef TEST_HOOKS
 	{0x00FF, 0, 0xFFFF, &test_hang},
 #endif
@@ -101,12 +107,15 @@ static uint16_t r_status;        /* 30006 bitfield (FR-S33)               */
 static uint16_t r_uptime_s;      /* 30008 saturating (FR-S34)             */
 static uint16_t r_reading_age_s; /* 30011 (FR-S36)                        */
 static uint16_t r_rate;          /* 30012 movement rate (FR-E10)          */
+static uint16_t r_at_closed;     /* 30013 raw code seen at the closed stop */
+static uint16_t r_at_open;       /* 30014 raw code seen at the open stop   */
 
 #define STATUS_FIRST_WINDOW_INCOMPLETE 0x0001 /* bit 0 (FR-S23/S30) */
 #define STATUS_AVG_NOT_FILLED          0x0002 /* bit 1 (FR-S23/S30) */
 #define STATUS_WIPER_FAULT             0x0004 /* bit 2 (FR-E07)     */
 #define STATUS_END_REACHED             0x0008 /* bit 3 (FR-E14)     */
 #define STATUS_SWITCH_FAULT            0x0010 /* bit 4 (FR-E16)     */
+#define STATUS_TEACH_ACTIVE            0x0020 /* bit 5 (FR-E19)     */
 
 #define OPEN_FAULT_SENTINEL 65535u /* §2.7 — reported by 30001..30004 */
 #define FAULT_HOLD_S        2u     /* FR-E07: hold the last value this long */
@@ -115,10 +124,19 @@ static uint16_t r_rate;          /* 30012 movement rate (FR-E10)          */
  * invalid samples (advanced by regs_second_tick); the sentinel is published
  * only once it exceeds FAULT_HOLD_S, so a single dropped sample is invisible to
  * the master. */
+/* FR-E19 teach state. `got_*` mark an endpoint captured since arming; `read_*`
+ * mark it collected by the master. The commit needs all four, which is what
+ * makes the handshake race-free: a master polling slowly cannot miss a
+ * capture, because the device will not retire it until it has been read. */
+static bool teach_got_closed, teach_got_open;
+static bool teach_read_closed, teach_read_open;
+
 static uint16_t invalid_s;
 static bool     sample_invalid;
 static bool     have_prev_open; /* FR-E10 needs two windows before a rate */
 static uint16_t prev_open;
+
+static void teach_service(void); /* FR-E19, defined below */
 
 static uint16_t input_read(uint16_t addr, bool *ok)
 {
@@ -135,6 +153,8 @@ static uint16_t input_read(uint16_t addr, bool *ok)
 	case 0x0009: return mb_served_count();
 	case 0x000A: return r_reading_age_s;
 	case 0x000B: return r_rate;
+	case 0x000C: teach_read_closed = true; return r_at_closed;
+	case 0x000D: teach_read_open = true;   return r_at_open;
 	default:
 		*ok = false; /* FR-MB13/14: exception 02 past the map edge */
 		return 0;
@@ -316,6 +336,79 @@ void regs_service(void)
 		r_status |= STATUS_FIRST_WINDOW_INCOMPLETE | STATUS_AVG_NOT_FILLED;
 		have_prev_open = false; /* the rate baseline is stale too */
 	}
+
+	teach_service(); /* FR-E19 */
+}
+
+void regs_note_end_stop(void)
+{
+	/* FR-E18: the window is physically at a stop, so the raw wiper code being
+	 * read right now IS that endpoint — by definition, not by inference. This
+	 * is the device's only independent reference: a draw-wire that has slipped
+	 * on its drum reports a plausible, stable, wrong opening, and nothing in
+	 * the wiper path can tell. Comparing these registers against 40005/40006
+	 * measures that drift against a physical stop rather than against anyone's
+	 * model of how long the actuator ran. */
+	const uint16_t raw = r_raw;
+
+	/* Which stop? The ladder deliberately does not say (TDS §4.4), so decide by
+	 * whichever calibrated endpoint the reading lies nearer. Sound while the
+	 * calibration is approximately right, which is the case this exists to
+	 * serve — correcting drift, not calibrating from nothing. */
+	if (cal_span(raw, h_raw_closed) <= cal_span(raw, h_raw_open)) {
+		r_at_closed = raw;
+		teach_got_closed = true;
+		teach_read_closed = false; /* a new value has to be read again */
+	} else {
+		r_at_open = raw;
+		teach_got_open = true;
+		teach_read_open = false;
+	}
+}
+
+/* FR-E19: arm / abort / commit. Driven from regs_service so the commit lands
+ * in the main loop rather than inside a Modbus read. */
+static void teach_service(void)
+{
+	if (!h_teach) {
+		/* Idle, or an abort: discard captures and drop the status bit. A write
+		 * of 0 at any point leaves 40005/40006 untouched. */
+		if (r_status & STATUS_TEACH_ACTIVE) {
+			r_status &= (uint16_t)~STATUS_TEACH_ACTIVE;
+			teach_got_closed = teach_got_open = false;
+			teach_read_closed = teach_read_open = false;
+		}
+		return;
+	}
+
+	if (!(r_status & STATUS_TEACH_ACTIVE)) {
+		/* Freshly armed: start from nothing, so a stale capture from an
+		 * earlier session can never be committed. */
+		r_status |= STATUS_TEACH_ACTIVE;
+		teach_got_closed = teach_got_open = false;
+		teach_read_closed = teach_read_open = false;
+		return;
+	}
+
+	/* Both stops reached AND both values collected — the second half is what
+	 * keeps a slow poller from missing a capture. */
+	if (!(teach_got_closed && teach_got_open &&
+	      teach_read_closed && teach_read_open))
+		return;
+
+	/* FR-E06 applies to an internal write exactly as it does to a Modbus one:
+	 * this path bypasses the driver's range checking, so re-assert it here or
+	 * it is not enforced at all. A degenerate pair leaves teach armed with the
+	 * captures still readable, so the operator can see what went wrong. */
+	if (cal_span(r_at_closed, r_at_open) < CAL_MIN_SPAN)
+		return;
+
+	h_raw_closed = r_at_closed;
+	h_raw_open = r_at_open;
+	h_teach = 0;
+	r_status &= (uint16_t)~STATUS_TEACH_ACTIVE;
+	/* regs_service's shadow compare sees the change and clears the averaging
+	 * accumulator (FR-E05); regs_persist_service commits it to flash. */
 }
 
 void regs_publish_switches(uint16_t raw)
@@ -344,13 +437,17 @@ void regs_publish_switches(uint16_t raw)
 	 * very first sample immediately means a window parked against an end stop
 	 * reports bit 3 from its first response, rather than after a spurious
 	 * transition (FR-S18 criterion c). */
+	const bool was_at_stop = sw_seen && (sw_published == SW_ONE_ACTIVE);
 	sw_seen = true;
 	sw_published = sw_candidate;
 
-	if (sw_published == SW_ONE_ACTIVE)
+	if (sw_published == SW_ONE_ACTIVE) {
+		if (!was_at_stop)
+			regs_note_end_stop(); /* FR-E18: transition, not level */
 		r_status |= STATUS_END_REACHED;
-	else
+	} else {
 		r_status &= (uint16_t)~STATUS_END_REACHED;
+	}
 
 	/* FR-E16: the three states a healthy installation cannot produce. Reported
 	 * only — the opening registers come from an independent front-end and are

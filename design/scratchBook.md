@@ -418,7 +418,17 @@ Documentation is complete. What remains is implementation and evidence:
 Raised 2026-07-28, not yet decided. Neither is in the TDS as a requirement;
 both are flagged in TDS §6 pointing here.
 
-## Q1 — can the end switches auto-calibrate the endpoints?
+## Q1 — can the end switches auto-calibrate the endpoints? — **ANSWERED, implemented**
+
+**Policies (a) report-only and (b) teach-on-command were taken; (c) always-on
+was not.** FR-E18 publishes the raw code seen at each stop in 30013/30014;
+FR-E19 adds a commanded teach through 40007, committing only once both stops
+have been reached *and* both values read. Always-on self-calibration stays
+rejected for the flash-wear and accumulator-churn reasons below.
+
+The analysis that led there is kept below.
+
+---
 
 **Yes, and it fixes exactly the right failure mode — but not naively.**
 
@@ -434,6 +444,54 @@ in 40004 — has not changed at all. Re-learning the two raw endpoints while
 leaving 40004 alone corrects precisely that, and nothing else. The split
 between "raw endpoints, learnable" and "millimetres, measured once" turns
 out to be the right one.
+
+### The use case that changes the arithmetic (2026-07-29)
+
+Until the greenhouse M3 requirements study landed, this was a convenience
+feature: *the endpoints could re-learn themselves and save a commissioning
+step.* Weighed against flash wear and the which-end-fired ambiguity, that was
+a thin case, and the honest answer was "probably not worth it".
+
+The study reframes it, because it states what the sensor is actually *for*.
+Its §1.2 — "Position is currently open-loop dead reckoning… Invisible today:
+motor slip, drive-belt/chain failure, obstruction, ice, end-switch failure, a
+window physically blocked part-way" — is a request for **mechanical fault
+detection**, and its AT-WP09 acceptance test is *obstruct the window mid-travel
+and detect the divergence*. Detecting that a mechanism has drifted is not a
+side benefit of fitting the sensor; it is a third of the justification for
+fitting it at all.
+
+**And this is the one failure mode the device is otherwise blind to.** A wire
+that has slipped on the drum produces a perfectly plausible number. Nothing in
+the wiper path can tell — the reading is smooth, in range, stable, and wrong.
+Both `description.md` §10 and the compliance analysis say so plainly.
+
+The end switches are the **only independent physical reference the device
+has**, and auto-calibration is what turns that reference from *a bit you can
+read* into *a measurement of how wrong the calibration has become*:
+
+> at the moment a switch fires, compare the raw code being read against the
+> stored endpoint for that stop. Any difference is drift, measured against a
+> physical stop rather than against anybody's model of how long the motor ran.
+
+That is sharper than what the study itself plans. Its scheme is
+**commanded-versus-measured** in the controller — energise the relay for N
+seconds, expect X mm, compare — which works but inherits every error in the
+controller's travel-time model and only catches gross faults. The device's
+version needs no model at all: the stop is where the stop is.
+
+Three capabilities fall out, in increasing boldness, and they map onto the
+three policies below:
+
+1. **Report the discrepancy.** A master that trends it over months watches a
+   wire slip *before* it matters. That is condition monitoring, not fault
+   detection, and it is nearly free.
+2. **Teach on command.** Having seen the drift, re-learn deliberately.
+3. **Self-heal.** The device corrects itself — attractive, and the one that
+   carries all the problems below.
+
+So the question is no longer "is this worth building?" but "how much authority
+should it have?". That is a smaller and much more answerable question.
 
 ### Five things that make the naive version wrong
 

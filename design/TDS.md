@@ -130,9 +130,9 @@ Key design decisions fixed in this version:
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-MB13 | Must | A read request for any register address not listed in §2.7 or §2.8 shall return exception 02 (Illegal Data Address). | FC04 or FC03 request for raw address 0x0020; confirm exception 02. |
-| FR-MB14 | Must | A multi-register read (FC03/FC04) whose range spans at least one unimplemented address shall return exception 02 for the entire request. No partial data shall be returned. | FC04 request starting at the last valid input address (0x000B) with count 2; confirm exception 02, not partial data. |
+| FR-MB14 | Must | A multi-register read (FC03/FC04) whose range spans at least one unimplemented address shall return exception 02 for the entire request. No partial data shall be returned. | FC04 request starting at the last valid input address (0x000D) with count 2; confirm exception 02, not partial data. |
 | FR-MB15 | Must | A write to an unimplemented holding register address shall return exception 02. | FC06 write to raw holding address 0x0020; confirm exception 02 and no side effect. |
-| FR-MB27 | Must | The firmware shall implement the §2.7/§2.8 register map in full: raw input addresses 0x0000–0x000B (12 registers) and raw holding addresses 0x0000–0x0005 (6 registers). No mapped register shall return exception 02. | FC04 read of raw 0x0000 quantity 12 returns a normal response with 24 data bytes; FC03 read of raw 0x0000 quantity 6 returns 12 data bytes; FC04 of 0x000C returns exception 02. |
+| FR-MB27 | Must | The firmware shall implement the §2.7/§2.8 register map in full: raw input addresses 0x0000–0x000D (14 registers) and raw holding addresses 0x0000–0x0006 (7 registers). No mapped register shall return exception 02. | FC04 read of raw 0x0000 quantity 14 returns a normal response with 28 data bytes; FC03 read of raw 0x0000 quantity 7 returns 14 data bytes; FC04 of 0x000E returns exception 02. |
 | FR-MB28 | Must | FC03/FC04 requests with quantity = 0 or > 125 shall return exception 03 (Illegal Data Value). FC16 requests with quantity = 0, quantity > 123, or a byte-count field not equal to 2 × quantity shall return exception 03 and shall modify no register. Quantity validation shall be performed before address validation. | FC04 at raw 0x0000 with quantity 0 returns exception 03 (not 02, not an empty data frame) within 200 ms. FC03 with quantity 126 returns exception 03. FC16 to raw 0x0001 with quantity 2 but byte count 5 returns exception 03 and follow-up reads show both registers unchanged. |
 
 ### 2.5 Exception handling
@@ -157,8 +157,21 @@ Key design decisions fixed in this version:
 **New in this project — draft.** Measurement registers 30001–30004 and
 30012 read 0 from reset until the first measurement window completes
 (FR-S23). Identification, status, uptime and counter registers
-(30005–30010) are valid immediately after reset. The map edge is 0x000B
-(12 registers) — an FC04 past it returns exception 02 (FR-MB13).
+(30005–30010) are valid immediately after reset. The map edge is 0x000D
+(14 registers) — an FC04 past it returns exception 02 (FR-MB13).
+
+> **A read of 30013/30014 has a side effect while teach is armed** — it is
+> half of the FR-E19 handshake. That is deliberate: it means a master polling
+> at 1 Hz cannot miss the captured values, because the device will not retire
+> them until they have actually been collected. Outside teach the registers
+> are inert diagnostics and reading them changes nothing.
+
+30013/30014 are the **calibration-drift diagnostic** (FR-E18). Each holds the
+wiper reading taken the moment the window was last known to be physically at
+that stop. Comparing them against 40005/40006 measures how far the calibration
+has drifted, against a physical reference rather than against any model — and
+a slipped draw-wire is otherwise undetectable, because it produces a
+plausible, stable, wrong reading.
 
 | Raw | Modicon # | Description | Unit | Range |
 |-----|-----------|-------------|------|-------|
@@ -174,6 +187,8 @@ Key design decisions fixed in this version:
 | `0x0009` | 30010 | Served request count | — | 0–65535, wrapping (FR-S35) |
 | `0x000A` | 30011 | Seconds since the last valid sensor reading | s | 0–65535, clamped (FR-S36) |
 | `0x000B` | 30012 | Movement rate — magnitude of the opening change over the last measurement window | 0.1 mm/s | 0–65535, clamped (FR-E10) |
+| `0x000C` | 30013 | Raw ADC code captured at the last **closed-end** stop event | counts | 0–65535; 0 = no such event since reset (FR-E18) |
+| `0x000D` | 30014 | Raw ADC code captured at the last **open-end** stop event | counts | 0–65535; 0 = no such event since reset (FR-E18) |
 
 *Open (§6): whether the movement rate should be signed (opening vs closing)
 rather than a magnitude, and whether a percentage-of-travel register should
@@ -181,9 +196,11 @@ join the map for masters that would otherwise have to divide by 40004.*
 
 ### 2.8 Holding register map (FC03/FC06/FC16, read-write)
 
-**New in this project — draft.** All holding registers persist across reset
-in non-volatile storage (FR-S39); the Default column is the value on first
-boot / when the store is blank or corrupt (FR-S21). Writes outside the
+**New in this project — draft.** Holding registers 40001–40006 persist across reset in non-volatile storage
+(FR-S39); the Default column is the value on first boot / when the store is
+blank or corrupt (FR-S21). **40007 is deliberately excluded from
+persistence** — it is a command, not a setting, and an armed teach surviving a
+power cut would be a surprise rather than a convenience (FR-E19). Writes outside the
 valid range are rejected per FR-MB19/FR-MB22. Two cross-register
 constraints apply, defined and enforced solely by FR-S31 (40002/40003) and
 FR-E06 (40005/40006).
@@ -196,6 +213,7 @@ FR-E06 (40005/40006).
 | `0x0003` | 40004 | Full travel — opening span between the two calibration points | 0.1 mm | 1–65534 | 10000 (= 1000.0 mm) |
 | `0x0004` | 40005 | Raw code with the window **closed** (FR-E05) | ADC counts | 0–65534, subject to FR-E06 | 0 |
 | `0x0005` | 40006 | Raw code with the window **fully open** (FR-E05) | ADC counts | 1–65535, subject to FR-E06 | 1023 |
+| `0x0006` | 40007 | Teach command / state — **not persisted** (FR-E19) | — | 0 = idle, 1 = arm/active | 0 |
 
 40005 and 40006 are the *closed* and *open* points, not a low and a high one:
 **40006 may legally be less than 40005**, which is how a reversed sensor
@@ -236,7 +254,7 @@ carried-over `board.c` and `mb.c`.)*
 | FR-S24 | Must | All register values returned in a single FC03/FC04 response shall form a coherent snapshot from one measurement update. In particular, 30001 and 30005 in the same response shall be consistent: 30001 equals the FR-E04 scaling applied to that response's 30005 — never a mixture of two windows. | Drive the window continuously between two positions while polling FC04 for 30001–30005 back-to-back for ≥1 hour (≥50,000 responses): the 30001/30005 consistency rule holds in 100% of responses and no response mixes values from two windows. |
 | FR-S30 | Must | A valid write to 40002 shall abort the in-progress measurement window; the partial result shall be discarded (not published) and a new window of the new duration shall start immediately. A valid write to 40002 or 40003 shall clear the averaging accumulator; 30002/30003/30004 shall retain their last published values until the first new window completes, then follow the partial-window rule (FR-S23). Status bits 0 and 1 (FR-S33) shall re-assert accordingly. | At a fixed opening, write 40002 = 5000 mid-window: the next publish occurs no sooner than 5000 ms after the write; status bit 0 is set from the write until that window completes. Write 40003 = 5 mid-average: bit 1 sets and clears within 5 s. |
 | FR-S31 | Must | The firmware shall enforce (40003 × 1000) ≥ 40002 at all times: any FC06/FC16 write violating this shall be rejected with exception 03 and leave the register(s) unchanged (respecting FR-MB22 atomicity). This row is the single normative source of the constraint. The average shall span N = floor((40003 × 1000) / 40002) completed windows (N ≥ 1). For N ≤ 64 the boxcar shall be exact; for N > 64 a two-stage boxcar is permitted: consecutive windows aggregated into blocks of ⌈N/64⌉ windows (block mean for the opening, block minimum/maximum for 30003/30004), with an effective span within ±one block of N windows. This bounds storage at ≤64 entries per quantity. | Precondition: write 40003 = 60, then 40002 = 60000. FC06 write 40003 = 30 then returns exception 03 and 40003 is unchanged; write 40003 = 60 is accepted. With 40002 = 100 and 40003 = 600 at a fixed opening, the device meets FR-MB20 timing for ≥10 minutes and 30002 settles to 30001 ±1 LSB. |
-| FR-S39 | Must | The six holding registers (40001–40006) shall persist across every reset and power-loss in on-chip non-volatile storage. On a write that *changes* a holding value (FC06/FC16, after it passes FR-MB19/FR-MB22/FR-S31/FR-E06 validation and the Modbus response has been transmitted), the firmware shall commit the whole holding set so a subsequent reset restores it (superseding the §2.8 defaults, per FR-S21). The commit shall be power-loss atomic — a reset at any point during a commit leaves the previously committed set intact, never a partial/corrupt configuration — and shall fall back to the §2.8 compile-time defaults when no valid record exists (first boot / erased store). Unchanged writes shall not wear the store. | Write non-default 40001–40006, trigger a watchdog reset, confirm FC03 returns the written values (not §2.8 defaults) within 1 s. On an erased store the read returns the §2.8 defaults. Re-writing identical values causes no additional non-volatile write. Power interrupted mid-commit never yields a partial configuration. |
+| FR-S39 | Must | The six *setting* holding registers (40001–40006) shall persist across every reset and power-loss in on-chip non-volatile storage. The teach command register 40007 shall @b not persist: it reads 0 after any reset regardless of its value beforehand (FR-E19). On a write that *changes* a holding value (FC06/FC16, after it passes FR-MB19/FR-MB22/FR-S31/FR-E06 validation and the Modbus response has been transmitted), the firmware shall commit the whole holding set so a subsequent reset restores it (superseding the §2.8 defaults, per FR-S21). The commit shall be power-loss atomic — a reset at any point during a commit leaves the previously committed set intact, never a partial/corrupt configuration — and shall fall back to the §2.8 compile-time defaults when no valid record exists (first boot / erased store). Unchanged writes shall not wear the store. | Write non-default 40001–40006, trigger a watchdog reset, confirm FC03 returns the written values (not §2.8 defaults) within 1 s. On an erased store the read returns the §2.8 defaults. Re-writing identical values causes no additional non-volatile write. Power interrupted mid-commit never yields a partial configuration. |
 
 ### 3.3 Window-opening measurement
 
@@ -287,6 +305,8 @@ resistor values; the derivation is in `design/scratchBook.md`.
 | FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the four states of the §4.4 band table: normal, one sensor active, both active, cable fault. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". The bands tile the whole range, and the lowest band is the fault — so a disconnected or shorted input, which the board's own pull-down holds at zero, classifies as a fault rather than as a healthy loop. | At each of the four nominal divider values the classification matches the table and status bit 3 follows. Disconnecting the input at the board reads 0 counts and sets status bit 4. |
 | FR-E15 | Must | The classified switch state shall be debounced in firmware: a change shall be published only after the new state has been observed continuously for ≥20 ms. Sampling and debouncing shall never gate, delay or suppress the FR-MB20 response timing, the measurement path, or the FR-S20 watchdog feed. | Inject a 5 ms bounce burst: bit 3 changes exactly once, with no intermediate toggling visible to a master polling at 50 ms. The FR-MB21 latency histogram matches one taken with the switch input idle, within 2 ms. |
 | FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Disconnect the switch cable: bit 4 sets within 200 ms, bit 3 clears, and 30001 continues to track the window unchanged. Short the cable: same. Close both switches at once: same. Restore: bit 4 clears within 200 ms. |
+| FR-E18 | Should | On every debounced transition into "one sensor active" (FR-E14), the firmware shall capture the current raw wiper code and publish it to **30013** if that stop is the closed end or **30014** if it is the open end, deciding which by whichever of 40005/40006 the captured code lies nearer. Both registers shall read 0 until their first such event since reset. This is a diagnostic only: it shall never alter the calibration of its own accord. | Drive the window to each stop in turn with a known calibration: 30013 and 30014 each read the raw code observed at that stop, within the FR-E03 stability tolerance. Deliberately shift the sensor mounting by a known amount and repeat: the affected register moves by the corresponding number of counts while 40005/40006 are unchanged. Both read 0 after a reset until a stop is next reached. |
+| FR-E19 | Should | The firmware shall support a **commanded teach** of the calibration endpoints, sequenced as follows. (a) A write of 1 to holding register **40007** arms teach: status bit 5 (FR-S33) is set and any previously captured endpoints are discarded. (b) While armed, each stop reached per FR-E18 captures its endpoint as before. (c) When **both** endpoints have been captured since arming **and** the master has read **both** 30013 and 30014, the firmware shall commit them to 40005 and 40006, persist them (FR-S39), clear status bit 5 and reset 40007 to 0. (d) A write of 0 to 40007 aborts at any point, discarding captures and leaving 40005/40006 untouched. The commit shall be refused — leaving teach armed and the captures visible — if the pair would violate FR-E06, so a degenerate teach cannot be committed. 40007 shall not persist across reset (FR-S39). | Arm teach; bit 5 sets. Drive to one stop: bit 5 stays set. Drive to the other: bit 5 still set until both 30013 and 30014 have been read, then clears within one measurement window, with 40005/40006 equal to the captured pair and surviving a subsequent reset. Arm, reach one stop only, then write 40007 = 0: bit 5 clears and 40005/40006 are unchanged. Arm and teach two codes closer than the FR-E06 minimum span: no commit occurs, bit 5 remains set, and the captures stay readable. Arm, then reset the device: bit 5 is clear and 40007 reads 0. |
 
 ### 3.6 Clock and timing
 
@@ -302,7 +322,7 @@ resistor values; the derivation is in `design/scratchBook.md`.
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-S32 | Must | Input register 30007 shall identify the device: high byte = build type (0x01), fixed at compile time, independent of PC4; low byte = firmware version, incremented per release. | FC04 read returns 0x01vv. The value is identical with jumper open/bridged. The version byte matches the release records for the flashed binary. |
-| FR-S33 | Must | Input register 30006 shall report status flags — this row is the single normative bitfield definition: bit 0 = no completed measurement window since reset or since the last 40002 write (FR-S23/FR-S30); bit 1 = averaging accumulator not yet filled since reset or since the last 40002/40003/40004/40005/40006 write (FR-S23/FR-S30/FR-E05); bit 2 = wiper fault (FR-E07); bit 3 = end of travel reached (FR-E14); bit 4 = end-switch loop fault (FR-E16); bits 5–15 = 0. Bits 2 and 4 report two independent front-ends and may be set in any combination. | At power-on bits 0 and 1 are set; bit 0 clears after the first window, bit 1 after one full averaging window; both re-assert after a 40002 write per FR-S30's criterion. Disconnecting the wiper sets bit 2 (FR-E07) and leaves bit 4 clear. Disconnecting the switch cable sets bit 4 (FR-E16) and leaves bit 2 clear. |
+| FR-S33 | Must | Input register 30006 shall report status flags — this row is the single normative bitfield definition: bit 0 = no completed measurement window since reset or since the last 40002 write (FR-S23/FR-S30); bit 1 = averaging accumulator not yet filled since reset or since the last 40002/40003/40004/40005/40006 write (FR-S23/FR-S30/FR-E05); bit 2 = wiper fault (FR-E07); bit 3 = end of travel reached (FR-E14); bit 4 = end-switch loop fault (FR-E16); bit 5 = teach in progress (FR-E19); bits 6–15 = 0. Bits 2 and 4 report two independent front-ends and may be set in any combination. | At power-on bits 0 and 1 are set; bit 0 clears after the first window, bit 1 after one full averaging window; both re-assert after a 40002 write per FR-S30's criterion. Disconnecting the wiper sets bit 2 (FR-E07) and leaves bit 4 clear. Disconnecting the switch cable sets bit 4 (FR-E16) and leaves bit 2 clear. |
 | FR-S34 | Must | Input register 30008 shall report whole seconds since the last reset, starting at 0 and saturating at 65535, allowing the master to detect restarts (value went backwards). | A read shortly after power-on returns a low value; a later read has incremented consistently with FR-S17 timing accuracy; a watchdog reset via the test hook returns the register to 0. |
 | FR-S35 | Should | Input registers 30009 and 30010 shall count, respectively, every frame discarded for invalid CRC-16 (regardless of address) and every request for which a normal or exception response was transmitted. Both reset to 0 at power-on and wrap at 65535. | After a power cycle both read 0. 100 valid FC04 requests increment 30010 by exactly 100 and leave 30009 unchanged. 20 corrupted-CRC frames increment 30009 by exactly 20 and 30010 by 0. |
 | FR-S36 | Should | Input register 30011 shall report elapsed whole seconds since the last *valid* sensor reading — initialised to 0 at reset and counting up until the first valid reading — clamped at 65535 and reset to 0 on each valid reading. It is the plausibility-check companion to the FR-E07 fault flag: a rising 30011 with status bit 2 clear means readings have stopped arriving without the fault detector having tripped yet. | Disconnect the sensor: the register increments 1/s (±2%). Reconnect: the next read returns ≤1. |
@@ -618,6 +638,23 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   (0–1000 = 0.0–100.0 %) is one addition to §2.7 and would make the common
   case trivial. Not added yet because the map edge is a compatibility
   commitment.
+
+- **Auto-calibration — SPECIFIED (2026-07-29), one policy still open.**
+  FR-E18 (report the raw code seen at each stop, 30013/30014) and FR-E19
+  (commanded teach via 40007, with the both-reached-and-both-read handshake)
+  are in §2.7/§2.8 and implemented in `regs.c`. Together they cover the
+  reporting and teach-on-command policies. **Always-on self-calibration is
+  deliberately not specified** — it would clear the averaging accumulator on
+  every window cycle and write flash at a rate the ~20 k-cycle store cannot
+  sustain (`design/scratchBook.md` §Q1). Revisit only with field data on how
+  often the endpoints actually move.
+
+  *Residual:* which stop a capture belongs to is decided by proximity to the
+  existing 40005/40006, which is sound for correcting drift — the case this
+  serves — but circular on a device that has never been calibrated. A
+  first-time teach therefore needs the defaults to straddle the sensor's
+  usable span, or the operator to set 40005/40006 roughly by hand first. A
+  signed movement rate would settle it outright; see the item below.
 
 - **Movement-rate sign (30012).** Reported as an unsigned magnitude in the
   current draft (FR-E10). A signed `int16` would distinguish opening from

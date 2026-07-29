@@ -192,10 +192,15 @@ Acted on in TDS v0.4:
 
 Still open, and informed by the study:
 
-- **The auto-calibration question gains a use case.** The study's §1.2 is
-  precisely about undetected mechanical drift; end-switch-referenced
-  re-calibration is a partial answer to it, and their AT-WP09 (obstruct the
-  window, detect divergence) is the acceptance test for the same concern.
+- **Auto-calibration stopped being a convenience and became a diagnostic.**
+  The study's §1.2 asks for mechanical fault detection — slip, obstruction, a
+  window blocked part-way — and AT-WP09 tests exactly that. A slipped wire is
+  the one failure this sensor cannot otherwise see, because it yields a
+  plausible wrong reading; the end switches are its only independent physical
+  reference. Comparing the raw code at a stop against the stored endpoint
+  measures the drift directly, without relying on the controller's
+  travel-time model the way their commanded-versus-measured scheme does.
+  Analysis in `design/scratchBook.md` §Q1, tracked in TDS §6.
 - **A signed movement rate would serve FR-WP20 better** than the current
   unsigned magnitude — the controller wants to know a jump's direction as
   well as its size, and for a hanging flap "moving down" and "moving up"

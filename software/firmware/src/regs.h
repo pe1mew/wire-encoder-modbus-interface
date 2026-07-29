@@ -6,8 +6,10 @@
  * @ref mb.h "Modbus driver" via @ref regs_cfg(). Built during integration
  * stage C (`design/integrationPlan.md`).
  *
- * The map is fixed (FR-MB27): raw input addresses 0x0000–0x000B (12 registers)
- * and raw holding addresses 0x0000–0x0005 (6 registers).
+ * The map is fixed (FR-MB27): raw input addresses 0x0000–0x000D (14 registers)
+ * and raw holding addresses 0x0000–0x0006 (7 registers). Holding 0x0006 (40007)
+ * is the teach command and is the one holding register that does @b not
+ * persist (FR-E19).
  *
  * @par Current state — no measurement service
  * The encoder driver does not exist yet (`design/driverDevelopment.md` §3), so
@@ -18,7 +20,8 @@
  * this build answers the whole map correctly and reports, truthfully, that it
  * has never completed a measurement.
  *
- * The six holding registers persist across reset (@ref persist.h, FR-S39).
+ * Six of the seven holding registers persist across reset (@ref persist.h,
+ * FR-S39); the teach command 40007 deliberately does not.
  */
 #ifndef REGS_H
 #define REGS_H
@@ -59,6 +62,30 @@ uint16_t regs_travel_0_1mm(void); /**< 40004 full travel, 0.1 mm (FR-E05). */
 uint16_t regs_raw_closed(void);   /**< 40005 raw ADC code, window closed (FR-E05). */
 uint16_t regs_raw_open(void);     /**< 40006 raw ADC code, window fully open (FR-E05). */
 /** @} */
+
+/**
+ * @brief Note that the window is physically at an end stop (FR-E18/FR-E19).
+ *
+ * Called by the measurement service on each debounced transition into "one
+ * sensor active". Captures the current raw wiper code into 30013 or 30014 —
+ * whichever endpoint it lies nearer — because at that instant the window's
+ * true position is known, which is the only independent reference this device
+ * has. Comparing those registers against 40005/40006 measures calibration
+ * drift directly; a slipped draw-wire is otherwise undetectable, since it
+ * yields a plausible, stable, wrong reading.
+ *
+ * While a teach is armed (FR-E19) the capture also feeds the endpoint learn,
+ * and clears that endpoint's "collected" flag so the master must read the new
+ * value rather than a stale one.
+ *
+ * @note `regs_publish_switches` calls this itself on the debounced transition
+ *       into "one sensor active", so the measurement service does not have to.
+ *       It stays public so a test can force a capture.
+ *
+ * @note Diagnostic by default: outside teach this @b never alters the
+ *       calibration of its own accord.
+ */
+void regs_note_end_stop(void);
 
 /**
  * @brief Scale a raw ADC code to a window opening in 0.1 mm (FR-E04).
@@ -152,7 +179,7 @@ void regs_publish_opening(uint16_t raw, uint16_t open_0_1mm, bool valid);
 /**
  * @brief Publish one end-switch ladder reading (FR-E14/E15/E16).
  *
- * Classifies @p raw into one of the five TDS §4.4 states, debounces the
+ * Classifies @p raw into one of the four TDS §4.4 states, debounces the
  * classification for 20 ms (FR-E15), and maintains status bit 3 (end of travel
  * reached) and bit 4 (switch-loop fault) accordingly.
  *
