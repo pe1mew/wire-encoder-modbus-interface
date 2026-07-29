@@ -9,9 +9,8 @@
 | `LJ_en.pdf` | **Finglai LJ-series manual — the authoritative document.** Model decoder (`Z/BX` = NPN NO 6–36 V, `Z/BX-5V` = NPN NO 5 V, `Z/BY` = PNP NO), safety notes, and — most importantly — the **internal output circuit diagrams**, which show a 10 kΩ pull-up from the output to +V inside the NPN part. See the warning below |
 | `5911600_lj18a3.pdf` | LJ18A3 family **selection chart** (Yueqing Hengwei) — confirms the model coding and the M18×1 outline drawing. No electrical parameters |
 | `14_PROXIMITY_INDUCTIVE_18BY.pdf` | ⚠️ **This is the LJ18A3-8-Z/BY — the PNP variant, not the part we use.** Its page 2 model table covers the whole family (including our /BX) and its outline drawing is right, but **its specification table is for a PNP output.** See the warning below |
-| `lj18a3-8-zbx-…-B.jpg` | Seller's connection diagram for the family. Diagram 4, *NPN NO type*: brown = +V, blue = 0 V, black = output, load between + and the output — i.e. an open-collector sinking output |
 | `S9b9323826f2e48bca2893117435ce239v.pdf` | Mann Hwa / Zhongyang **ZY-series encoder catalogue** — see the warning below |
-| `S4a98f76ed9f049c3ac94bcd5a02d4304h.avif` | Seller's product image accompanying the above |
+| [`product-images/`](product-images/readme.md) | Supplier photographs for both sensors, renamed and indexed. **Three of them carry specification data found nowhere else** — including the draw-wire unit's only spec table (0.2 % error, >100 000 cycles, **IP50**) and the drawing that identifies the exact variant to order. Start at its [readme](product-images/readme.md) |
 
 > ⚠️ **The NPN output is not a bare open collector.** `LJ_en.pdf` page 2 shows
 > an **internal 10 kΩ pull-up from the output (black) to +V (brown)** inside

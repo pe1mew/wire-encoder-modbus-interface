@@ -691,13 +691,24 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   and needs its own block-aggregation rule. To be settled in
   `design/integrationPlan.md` stage E.
 
-- **The draw-wire unit's own ratings.** NFR-ENV01…05 bind the electronics.
-  The mechanism is bought, not designed, and is likely the narrowest part of
-  the chain: confirm its temperature range, its condensing-humidity rating,
-  and — the one most easily overlooked — its **cycle life against a
-  contacting wiper**. At 3–4 strokes a day over twenty years that is of the
-  order of 25 000 cycles; specify a conductive-plastic element rather than
-  accepting whatever is fitted.
+- **The draw-wire unit is IP50 and sits outside the enclosure — open.** Its
+  specification (transcribed in `documentation/product-images/readme.md`)
+  gives IP50: dust-protected, **not** water-protected. The IP67 enclosure and
+  its glands protect the electronics and do nothing for the sensor, which
+  hangs on the window frame in an environment that condenses most nights.
+  Options are a sheltered mounting position, a shroud over the unit, or a
+  higher-rated sensor. This is the weakest environmental point in the design
+  and it is outside the box, where NFR-ENV02…05 do not reach.
+
+  *Resolved by the same specification:* **accuracy 0.2 % max** (comfortably
+  inside the ±1 % repeatability and ±2 % accuracy asked of the mechanism, so
+  FR-E03's split between firmware and mechanism closes), **endurance
+  >100 000 cycles** (4× the ~25 000 needed over twenty years, so the
+  contacting-wiper concern is answered), and **maximum wire speed 100 mm/s**
+  against the M3 flap's 11.7 mm/s. Order the **RE38, 0–10 kΩ, 2000 mm**
+  variant — the resistance output is the passive potentiometer the design
+  depends on; the 4–20 mA, 0–5 V and 0–10 V variants would break the
+  ratiometric measurement.
 
 - **Address capacity.** One solder jumper gives two devices per segment
   (40/45). A building with more than two instrumented windows on one bus
