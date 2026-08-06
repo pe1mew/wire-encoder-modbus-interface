@@ -716,6 +716,80 @@ Things to think about when the schematic starts:
 
 ---
 
+## Ingress: IP65 (decision, 2026-07-29)
+
+**NFR-ENV03 narrowed from IP67 to IP65**, set by the selected Kopp 99966478
+(`hardware/Documentation/`). Same treatment as the +65 °C ceiling: state what
+the bill of materials actually delivers and name the part that limits it,
+rather than assert a number nothing in the design meets. The greenhouse study
+asks "IP65 minimum, IP67 preferred", and its preference for IP67 was written
+for hardware *at the aperture, which may be rain-wetted with the vent open*.
+This box holds the electronics and is mounted inside the structure, so IP65 is
+the level that applies to it.
+
+That is the decision, and it took about a minute. The rest of this note is
+about why it was nearly the wrong argument to be having.
+
+### The digit that matters is the first one, and nothing here changes it
+
+| | First digit (solids) | Second digit (water) |
+|---|---|---|
+| IP67 | 6 — dust-tight | 7 — temporary immersion |
+| **IP65** | **6 — dust-tight** | **5 — jets from any direction** |
+| IP50 (draw-wire unit) | 5 — dust-*protected*, ingress not excluded | **0 — none** |
+
+IP65 and IP67 differ only in the second digit, and the difference is *jets
+versus immersion*. Neither happens to a box bolted inside a greenhouse. What
+actually happens is **condensation**, and condensation forms on the *inside*
+of the enclosure from air that was already in it. **No IP rating addresses
+that at all** — the IP test is about what gets in from outside, and water that
+condenses in place never crossed the seal. A perfect IP68 box in this
+application would condense exactly as much as an IP65 one, and possibly more,
+since it could not breathe out during the day.
+
+So the IP digit is close to orthogonal to this device's real environmental
+risk. What addresses that risk is the **vent plug** and the **conformal
+coating** — see the next section, where the wiper-node leakage table shows a
+damp uncoated board failing FR-E03 silently. That is the failure mode worth
+spending money on, and it is not on the enclosure line of the BOM.
+
+### Where the rating does matter, we do not have it
+
+The exposed part is not the box. It is the **draw-wire unit**, hanging on the
+window frame, and it is **IP50**: dust-protected, no water protection
+whatsoever. The asymmetry is worth stating plainly —
+
+- the part that is **already fine** (dust-tight, water-jet-proof, mounted out
+  of the weather, holding only electronics) is the one the requirement
+  argument was about;
+- the part that is **actually exposed** and rated for *no* water at all is the
+  one nobody wrote a requirement against.
+
+Fixing the box from IP65 to IP67 would buy nothing. Fixing the sensor buys
+everything, and the options are a sheltered mounting position, a shroud, or a
+higher-rated unit. Tracked as the live gap in
+[`requirementsCompliance.md`](requirementsCompliance.md) §4 and TDS §6.
+
+### Two BOM traps this leaves behind
+
+- **The vent plug is a hole in the box.** A rated pressure-equalisation vent
+  keeps IP65 through its membrane; an unrated one silently becomes the
+  limiting element and the enclosure's number stops meaning anything. Buy the
+  rating, not just the vent. NFR-ENV03's verification explicitly includes it.
+- **Glands must be sized to the cable, not to the entry.** An M20 gland
+  clamping a cable thinner than its range is a gap with a nut around it. The
+  Kopp box supplies three glands for what the install needs five entries of —
+  see the entry table in `hardware/Documentation/readme.md`.
+
+### What would change this
+
+A mounting position where the box can be rain-wetted or hosed — a washdown
+regime, or an installation on the outside of the structure. Then the second
+digit starts earning its keep and the box has to be re-selected. Nothing about
+the current design says that, so IP65 stands.
+
+---
+
 ## Humidity: what the vent plug does and does not fix
 
 The enclosure has a **pressure-equalisation vent plug**, and that is the right
