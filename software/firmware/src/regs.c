@@ -207,9 +207,16 @@ static persist_settings_t persisted;
  *
  * Two properties worth not breaking:
  *
- *   - FAIL-SAFE BY CONSTRUCTION. The 4k7 is on the board, so a cut or
- *     unconnected input is held at 0 and lands in the fault band. No input
- *     state reads healthy by accident.
+ *   - FAIL-SAFE AGAINST A SHORT, NOT AGAINST AN OPEN. The 4k7 is on the
+ *     board, so an input shorted to 0 V or never connected reads 0 and lands
+ *     in the fault band. But since the star topology (TDS §4.4, 2026-08-07)
+ *     the 100k summing resistors are on the PCB, so an open SENSOR CABLE
+ *     never reaches this pin: it leaves that branch unterminated and the node
+ *     sits at ~337 counts, which this function decodes as SW_ONE_ACTIVE.
+ *     A cut therefore reports a FALSE END OF TRAVEL, silently. That is a
+ *     documented limit (FR-E14/FR-E16), not a bug here — do not "fix" it by
+ *     moving a threshold, because 337 is only 38 counts from a genuine stop
+ *     at 299 and the bands need 45 for supply tolerance alone.
  *   - The 100k summing resistors swamp the sensors' saturation voltage: at
  *     Vsat = 1.5 V "one active" moves by 17 counts, where the old topology
  *     moved 296 and mis-decoded as "normal".
@@ -221,7 +228,8 @@ static persist_settings_t persisted;
 #define SW_TH_BOTH    25u
 
 typedef enum {
-	SW_CABLE_FAULT = 0, /* open or shorted — nothing driving the node */
+	SW_CABLE_FAULT = 0, /* shorted to 0 V, or nothing fitted. NOT an open
+	                     * sensor cable — that reads as SW_ONE_ACTIVE */
 	SW_BOTH_ACTIVE,     /* impossible on a working window — wiring fault */
 	SW_ONE_ACTIVE,      /* at an end stop */
 	SW_NORMAL,          /* between the stops */

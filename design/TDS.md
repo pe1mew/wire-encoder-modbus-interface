@@ -309,9 +309,9 @@ resistor values; the derivation is in `design/scratchBook.md`.
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-E20 | Should | Input register 30015 shall report the window opening as a percentage of the configured full travel, in units of 0.1 % (0–1000), derived from the *instantaneous* opening (30001) so that it tracks the same value a positioning loop reads. It shall be computed as `(30001 − 40001) × 1000 / 40004`, clamped to 1000, and shall carry the FR-E07 fault sentinel 65535 whenever 30001 does. | With the window at the calibrated closed point 30015 reads 0; at full travel it reads 1000; at the midpoint 500 ±1. Halving 40004 doubles the reported percentage for the same physical position. Disconnecting the wiper drives it to 65535 alongside 30001. |
-| FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the four states of the §4.4 band table: normal, one sensor active, both active, cable fault. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". The bands tile the whole range, and the lowest band is the fault — so a disconnected or shorted input, which the board's own pull-down holds at zero, classifies as a fault rather than as a healthy loop. | At each of the four nominal divider values the classification matches the table and status bit 3 follows. Disconnecting the input at the board reads 0 counts and sets status bit 4. |
+| FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the four states of the §4.4 band table: normal, one sensor active, both active, cable fault. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". The bands tile the whole range, and the lowest band is the fault — so an input shorted to 0 V, or one never connected, classifies as a fault rather than as a healthy loop. **An open sensor cable does not**: in the star topology it lands at 337 counts and is decoded as "one sensor active" (§4.4.3). | At each of the four nominal divider values the classification matches the table and status bit 3 follows. Shorting the input at the board reads 0 counts and sets status bit 4. Disconnecting one sensor cable reads ≈337 and sets bit 3 — the known limit, not a defect. |
 | FR-E15 | Must | The classified switch state shall be debounced in firmware: a change shall be published only after the new state has been observed continuously for ≥20 ms. Sampling and debouncing shall never gate, delay or suppress the FR-MB20 response timing, the measurement path, or the FR-S20 watchdog feed. | Inject a 5 ms bounce burst: bit 3 changes exactly once, with no intermediate toggling visible to a master polling at 50 ms. The FR-MB21 latency histogram matches one taken with the switch input idle, within 2 ms. |
-| FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Disconnect the switch cable: bit 4 sets within 200 ms, bit 3 clears, and 30001 continues to track the window unchanged. Short the cable: same. Close both switches at once: same. Restore: bit 4 clears within 200 ms. |
+| FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. **Scope, narrowed 2026-08-07 with the star topology:** bit 4 covers a signal shorted to 0 V and both switches active at once. It does **not** cover an open conductor in a sensor cable, which is indistinguishable from a genuine stop (§4.4.3) — the device cannot detect that condition and must not be documented as if it can. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Short the switch input: bit 4 sets within 200 ms, bit 3 clears, and 30001 continues to track the window unchanged. Close both switches at once: same. Restore: bit 4 clears within 200 ms. **Negative test:** disconnect one sensor cable — bit 4 stays clear and bit 3 sets, confirming the documented limit rather than contradicting it. |
 | FR-E18 | Should | On every debounced transition into "one sensor active" (FR-E14), the firmware shall capture the current raw wiper code and publish it to **30013** if that stop is the closed end or **30014** if it is the open end, deciding which by the **direction of the last movement** (FR-E10): a window
 that was opening has reached the open end, one that was closing has reached the
 closed end. Where no direction is known — no movement since reset — it shall
@@ -332,7 +332,7 @@ fall back to whichever of 40005/40006 the captured code lies nearer. Both regist
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-S32 | Must | Input register 30007 shall identify the device: high byte = build type (0x01), fixed at compile time, independent of PC4; low byte = firmware version, incremented per release. | FC04 read returns 0x01vv. The value is identical with jumper open/bridged. The version byte matches the release records for the flashed binary. |
-| FR-S33 | Must | Input register 30006 shall report status flags — this row is the single normative bitfield definition: bit 0 = no completed measurement window since reset or since the last 40002 write (FR-S23/FR-S30); bit 1 = averaging accumulator not yet filled since reset or since the last 40002/40003/40004/40005/40006 write (FR-S23/FR-S30/FR-E05); bit 2 = wiper fault (FR-E07); bit 3 = end of travel reached (FR-E14); bit 4 = end-switch loop fault (FR-E16); bit 5 = teach in progress (FR-E19); bits 6–15 = 0. Bits 2 and 4 report two independent front-ends and may be set in any combination. | At power-on bits 0 and 1 are set; bit 0 clears after the first window, bit 1 after one full averaging window; both re-assert after a 40002 write per FR-S30's criterion. Disconnecting the wiper sets bit 2 (FR-E07) and leaves bit 4 clear. Disconnecting the switch cable sets bit 4 (FR-E16) and leaves bit 2 clear. |
+| FR-S33 | Must | Input register 30006 shall report status flags — this row is the single normative bitfield definition: bit 0 = no completed measurement window since reset or since the last 40002 write (FR-S23/FR-S30); bit 1 = averaging accumulator not yet filled since reset or since the last 40002/40003/40004/40005/40006 write (FR-S23/FR-S30/FR-E05); bit 2 = wiper fault (FR-E07); bit 3 = end of travel reached (FR-E14); bit 4 = end-switch loop fault (FR-E16); bit 5 = teach in progress (FR-E19); bits 6–15 = 0. Bits 2 and 4 report two independent front-ends and may be set in any combination. | At power-on bits 0 and 1 are set; bit 0 clears after the first window, bit 1 after one full averaging window; both re-assert after a 40002 write per FR-S30's criterion. Disconnecting the wiper sets bit 2 (FR-E07) and leaves bit 4 clear. Shorting the switch input sets bit 4 (FR-E16) and leaves bit 2 clear; disconnecting a sensor cable sets bit 3, not bit 4 — the FR-E16 limit. |
 | FR-S34 | Must | Input register 30008 shall report whole seconds since the last reset, starting at 0 and saturating at 65535, allowing the master to detect restarts (value went backwards). | A read shortly after power-on returns a low value; a later read has incremented consistently with FR-S17 timing accuracy; a watchdog reset via the test hook returns the register to 0. |
 | FR-S35 | Should | Input registers 30009 and 30010 shall count, respectively, every frame discarded for invalid CRC-16 (regardless of address) and every request for which a normal or exception response was transmitted. Both reset to 0 at power-on and wrap at 65535. | After a power cycle both read 0. 100 valid FC04 requests increment 30010 by exactly 100 and leave 30009 unchanged. 20 corrupted-CRC frames increment 30009 by exactly 20 and 30010 by 0. |
 | FR-S36 | Should | Input register 30011 shall report elapsed whole seconds since the last *valid* sensor reading — initialised to 0 at reset and counting up until the first valid reading — clamped at 65535 and reset to 0 on each valid reading. It is the plausibility-check companion to the FR-E07 fault flag: a rising 30011 with status bit 2 clear means readings have stopped arriving without the fault detector having tripped yet. | Disconnect the sensor: the register increments 1/s (±2%). Reconnect: the next read returns ≤1. |
@@ -376,7 +376,7 @@ names the part datasheet mentions.
 | 4 | VDD | — | +3.3 V supply | — |
 | 5 | PC1 | digital, 5 V tolerant | Address-select jumper — 10 k pull-up + jumper to GND | FR-S03 |
 | 6 | PC2 | digital, 5 V tolerant | RS-485 driver enable (DE/RE) — to MAX3485; 10 k pull-down | FR-MB04, FR-S18 |
-| 7 | PC4 | **ADC ch2** | End-of-travel switch ladder — supervised loop, §4.4 | FR-E14/E15/E16 |
+| 7 | PC4 | **ADC ch2** | End-of-travel switches — two outputs summed on-board, §4.4 | FR-E14/E15/E16 |
 | 8 | PD1 (= PD4/PD5) | SWIO | Single-wire debug/flash — reserved, not used for I/O | — |
 
 **Every pin is committed; there is no spare.**
@@ -443,28 +443,34 @@ What the board needs is therefore **attenuation and clamping, not excitation**.
 
 #### 4.4.2 The network
 
-Summing happens in a **field junction at the sensors** — which the installation
-needs anyway, since the flying leads are only 1.1 m. That placement is what
-keeps the loop supervised: one signal conductor comes back, and a break
-anywhere in the harness collapses it.
+**The installation is a star: the PCB is the hub, and the draw-wire and each
+end switch run their own cable back to it** (decided 2026-08-07). There is no
+field junction, so summing happens **on the board**. This is a change of
+topology, not of values — the four band levels below are unaltered — but it
+costs the cable supervision, which §4.4.4 and §4.4.6 now state honestly.
 
 ```
-        field junction (at the sensors)                board
-                                             |
-   +V ────────[ 470k ]──────┐                |
-                            │                |
-   A out ─────[ 100k ]──────┤                |
-                            ├──── signal ────┼──[ 10k ]──┬──── PC4 (ADC ch2)
-   B out ─────[ 100k ]──────┘                |           │
-                                             |         [ 4k7 ]
-   0 V ──────────────────────────────────────┼───────────┴──── GND
-                                             |           │
-                                             |        clamp to 3V3 + GND
+   +24V ──────┬────────────────────────────────────► +V to both sensors
+              │                          |
+           [ 470k ]                      |    star: three separate runs
+              │                          |
+   OUT A ─[ 100k ]─┐                     |    ── end switch A   (own cable)
+                   ├── sum ──[ 10k ]──┬──┼─── PC4 (ADC ch2)
+   OUT B ─[ 100k ]─┘                  │  |    ── end switch B   (own cable)
+                                    [ 4k7 ]
+   0 V ─────────────────────────────────┴──── GND
+                                          │
+                                     clamp to 3V3 + GND
 ```
 
-- **470 k from +V** is the end-of-line element. It is what makes the loop
-  supervised, and it must be **in the field junction**, not on the PCB.
-- **100 k per sensor output.** Large deliberately — see §4.4.4.
+- **470 k from +24 V.** It is no longer an end-of-line element — on the board
+  it supervises nothing. It earns its place for a different reason: it is what
+  holds *both active* at 56 counts instead of collapsing it onto *cable
+  shorted* at 0. Without it those two states become one. Feeding it from 3V3
+  instead would drop *both active* to 8 counts, inside the fault band, so it
+  stays on the 24 V rail.
+- **100 k per sensor output.** Large deliberately — see §4.4.4. In a star they
+  have nowhere to be except the PCB, which is what removes the supervision.
 - **10 k series + 4k7 to ground** at the board attenuate by 0.32 and limit the
   clamp current if the signal conductor ever shorts to +V (7.7 V at the
   divider, ≈2 mA into the clamp — survivable indefinitely).
@@ -478,20 +484,36 @@ anywhere in the harness collapses it.
 | Normal — between the stops | 1.76 V | **547** | — |
 | One sensor active — at a stop | 0.97 V | **299** | bit 3 |
 | Both active — wiring fault | 0.18 V | **56** | bit 4 |
-| Cable open or shorted | 0 V | **0** | bit 4 |
+| Signal shorted to 0 V | 0 V | **0** | bit 4 |
+| *One sensor cable open* | *3.40 V* | *337* | *decoded as **one active** — see below* |
 
 Decision thresholds: **≥420** normal, **≥150** one active, **≥25** both
 active, **<25** cable fault.
+
+**The last row is the cost of the star.** With the 100 k on the board, an open
+sensor cable simply removes that branch's pull-up, and "removed" sits between
+"inactive" and "active" — 337 counts, 38 counts from a genuine stop at 299 and
+squarely inside the same band. So a cut reports a **false end of travel**,
+which is worse than a detected fault because the controller acts on it.
+
+This cannot be tuned out. §4.4.4 needs ≥45 counts of margin just to absorb the
+±15 % supply tolerance, and a fifth state does not fit between four bands on a
+single 10-bit input. It is the same wall `design/scratchBook.md` hit when it
+proved the ladder can resolve *which* switch or *both closed*, but not both:
+the pin is out of resolution, not the values out of tune.
 
 Note the ordering is **inverted** relative to the earlier pull-up design:
 healthy is now the *highest* reading and a dead cable is *zero*.
 
 #### 4.4.4 Three properties worth keeping
 
-**Fail-safe by construction.** The 4k7 sits on the board, so if the incoming
-conductor is cut — or never connected — the node is held at 0 V and reads as a
-fault. Nothing floats, and there is no input state that reads healthy by
-accident.
+**Fail-safe against a short, not against an open.** The 4k7 sits on the board,
+so a signal node shorted to 0 V, or an unpopulated input, reads 0 and
+classifies as a fault. Nothing floats at the ADC pin. But in the star topology
+an open *sensor cable* does not reach the pin at all — it leaves that branch's
+100 k unterminated, and the node lands at 337 counts, inside the *one active*
+band. Read §4.4.3's last row before relying on this paragraph: the input is
+fail-safe, the harness is not.
 
 **Saturation voltage almost stops mattering.** The 100 k summing resistors swamp
 it. Where the previous topology shifted *one active* by **296 counts** at
@@ -519,9 +541,20 @@ for a passive-PoE feed — but it is a genuine regression against the wiper path
 where the ratiometric trick makes supply drift disappear entirely. Do not
 casually narrow the bands later on the assumption that they are stable.
 
-Feeding the end-of-line element from the board's 3.3 V instead would restore
-ratiometric behaviour, at the cost of no longer supervising the +V conductor.
-That trade was taken deliberately in favour of supervision.
+Feeding the 470 k from the board's 3.3 V would not fix this: the sensor
+outputs still swing against the 24 V rail and dominate the sum, and the only
+effect would be to drop *both active* to 8 counts and lose it into the fault
+band. The bands are 24 V-referenced because the sensors are.
+
+**Cable supervision — given up with the star (2026-08-07).** The 470 k was
+chosen as an end-of-line element, and an end-of-line element is only that if
+it sits at the end of the line. With the PCB as the hub of a star it sits at
+the near end, so it proves nothing about the harness. What is still detected:
+a signal shorted to 0 V, and both switches active at once. What is no longer
+detected: **any open conductor in either sensor cable**, which reports a false
+stop (§4.4.3). Status bit 4 and FR-E16 have been narrowed to match; the
+alternative — a junction box at the sensors, keeping the summing in the field
+— was considered and rejected in favour of the star's simpler installation.
 
 **Both-active and cable-fault are only just distinguishable** (56 vs 0 counts).
 Both set bit 4 and neither is separately actionable, so treat them as one
@@ -534,6 +567,25 @@ node drops only because the sensors stop sourcing, which is indistinguishable
 from a genuinely inactive pair. This is inherent to powering the sensors down
 the same cable and is recorded in §6.
 
+#### 4.4.6 What the star does buy
+
+The trade is not one-way, and the gain is in the place §4.6 already taught us
+to look. In a field junction the 100 k and 470 k would sit uncoated in the
+least controlled part of the installation, and §4.6's own figures say
+contaminated films reach 100 kΩ–10 MΩ without difficulty. Against this
+network:
+
+| Leakage path in the junction | Value that breaks a band | Effect |
+|---|---|---|
+| signal → 0 V | **37 kΩ** | *normal* decodes as a stop — a false stop |
+| signal → +V | **182 kΩ** | *one active* decodes as normal — **a real stop is missed** |
+
+The second is five times easier to reach, sits between two adjacent terminals,
+and fails in the direction where the window keeps driving. On the board, inside
+IP65 and under conformal coating, both numbers stop mattering. So the star
+moves a hidden failure out of the harness and puts a detectable-turned-hidden
+one in — it is a genuine trade, not a pure loss.
+
 ### 4.5 Enclosure and field wiring (decided 2026-07-28)
 
 The device is installed **inside a greenhouse**, in an environment that is
@@ -544,7 +596,7 @@ not rain-wetted. The enclosure strategy follows from that:
 |---|---|
 | **IP65 enclosure** — **Kopp 99966478**, 110 × 110 × 40 mm, 6 entries, 3 × M20 glands supplied (`hardware/Documentation/`) | Everything electrical is inside it. Ingress protection is a property of the box and its glands, not of the connectors. This box sets NFR-ENV03's figure |
 | **All connectors are internal** | The RJ45 bus connectors sit *inside* the enclosure. They are ordinary connectors in a sealed box, not exposed ones, so their own (non-)rating does not matter |
-| **Waterproof cable glands** | Field cables — bus, sensor, switch loop — enter through glands. The gland is the seal |
+| **Waterproof cable glands** | Field cables enter through glands; the gland is the seal. **The star costs an entry:** bus in, bus out, draw-wire, end switch A, end switch B and the vent plug is **six — every entry the Kopp box has, with none spare.** Count them before ordering |
 | **Pressure-equalisation vent plug** | A hydrophobic membrane vent, IP-rated in its own right. Air passes; liquid water does not |
 | **Terminal blocks inside** for the draw-wire and the end switches | Field-wireable without special tooling; the installer strips and screws rather than crimping a connector in situ |
 | **Mounted out of direct UV** | Removes the UV exposure question from the enclosure material |
@@ -699,11 +751,24 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   a confirmation rather than a risk — but an open-collector part with no
   internal pull-up would change the answer completely.
 
-- **Detecting a broken +V conductor** (§4.4). Powered sensors introduced a
-  failure mode the dry-contact design did not have: lose the supply
-  conductor alone and the loop reads healthy for ever. Solvable at the
-  schematic by deriving part of the pull-up from the far end; decide whether
-  to.
+- **An open sensor cable is undetected, and reports a false stop** (§4.4.3) —
+  the standing consequence of the star, recorded here because it is a live
+  limitation rather than a closed decision. A cut lands at 337 counts inside
+  the *one active* band, so the device says "end of travel" when the truth is
+  "I have lost the sensor". FR-E16 and status bit 4 have been narrowed to say
+  so. **A firmware mitigation is available and not yet specified:** once
+  FR-E19 has taught the endpoints, a stop claimed while the wiper sits far
+  from either calibrated end is implausible, and the two independent
+  front-ends can cross-check each other. That would catch most of this class
+  without any hardware change. It needs its own requirement, a decision about
+  what to do before the first teach, and a tolerance — none of which exist
+  yet.
+
+- **A broken +V conductor is also undetected** (§4.4). Lose the supply to one
+  sensor and its output goes quiet, which reads identically to a cut signal
+  conductor — a false stop. Powering the sensors down their own cables is what
+  introduced this; the dry-contact design did not have it. Now a sub-case of
+  the item above rather than a separate problem.
 
 - **Sensor polarity is now fixed, but the target is not.** The LJ18A3-8-Z/BX
   is normally-open, so §4.4's sense is settled. What is not settled is the
@@ -723,9 +788,10 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   change to this document. See `design/requirementsCompliance.md`.
 
 - **Cable length and joints** (§4.4). The 1.1 m flying lead will usually need
-  extending. Any joint sits inside a supervised loop, so it must be sealed to
-  the same standard as the enclosure and must not displace the EOL resistor
-  from the sensor end.
+  extending, once per sensor now that each has its own run to the hub. The
+  joint is no longer inside a supervised loop — nothing downstream will report
+  it if it corrodes open — so sealing it to the enclosure's standard matters
+  *more* than it did, not less, because the failure is now silent.
 
 - **Enclosure and environment — CLOSED (v0.4, ingress figure settled v0.5).**
   IP65 box (Kopp 99966478), all connectors

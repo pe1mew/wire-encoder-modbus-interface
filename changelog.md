@@ -230,6 +230,42 @@ that also monitors its own cable.
   measurement is no longer ratiometric, and both-active vs cable-fault are
   only just distinguishable — both are bit-4 faults, so treat them as one.
   `regs.c`'s classifier and thresholds updated to match.
+- **The installation is a star, and it costs the cable supervision**
+  (2026-08-07). The PCB is the hub; the draw-wire and **each** end switch run
+  their own cable to it. There is no field junction, so the 100 k summing
+  resistors and the 470 k have nowhere to live except the PCB — and an
+  end-of-line resistor at the near end of the line is not an end-of-line
+  resistor. The four band levels are unchanged; what changed is what a fault
+  looks like. An open sensor cable removes that branch's pull-up, and
+  *removed* lands between *inactive* and *active*: **337 counts, 38 from a
+  genuine stop at 299, inside the same band**. So a cut does not report a
+  fault, it reports **a stop that did not happen** — worse than a detected
+  fault, because the controller acts on it instead of alarming. It cannot be
+  tuned out: the bands need 45 counts of margin for supply tolerance alone,
+  and a fifth state does not fit between four on one 10-bit pin. FR-E16 and
+  status bit 4 are narrowed to cover a short to 0 V and both-switches-active
+  only; FR-E14's verification gains a negative test that confirms the limit
+  rather than contradicting it. The 470 k stays on the board with a new job —
+  it is what holds *both active* at 56 counts instead of collapsing it onto
+  *shorted* at 0.
+
+  The trade is not one-way. Field-mounted 100 k and 470 k would have sat
+  uncoated in the dampest part of the installation, where §4.6's own figures
+  say contaminated films reach 100 kΩ–10 MΩ without difficulty — and against
+  this network a **182 kΩ** leak from signal to +V *masks a real stop*, five
+  times easier to reach than the 37 kΩ that would invent a false one, sitting
+  between two adjacent terminals, failing in the direction where the window
+  keeps driving. On the PCB, inside IP65 and coated, neither number matters.
+  The star moves one hidden failure out of the harness and turns one
+  detectable failure into a hidden one. A firmware mitigation is available
+  and deliberately not yet specified: after FR-E19 has taught the endpoints, a
+  stop claimed while the wiper sits far from either calibrated end is
+  implausible, and the two independent front-ends can cross-check. Recorded in
+  TDS §6 with the two questions it still needs answered.
+
+  Knock-on: the enclosure now uses **all six** entries — bus in, bus out,
+  draw-wire, switch A, switch B, vent — with none spare.
+
 - **⛔ Superseded — the original open-collector assumption.**
   The manufacturer's manual (`LJ_en.pdf` p. 2) shows the NPN output carries an
   **internal 10 kΩ pull-up to +V** — it is not a bare open collector and does

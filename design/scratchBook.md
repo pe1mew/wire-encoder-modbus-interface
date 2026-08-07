@@ -404,12 +404,66 @@ Documentation is complete. What remains is implementation and evidence:
    contacts closing to GND; normally-closed inverts the whole table and
    changes which state means "cable cut". Decide before the resistor values
    go on a schematic.
-5. **The end-of-line resistor is an installation instruction**, not a BOM line
-   on the board. If it ends up fitted in the enclosure instead of at the far
-   end of the cable, the supervision silently degrades to a plain switch
-   input — the loop would read healthy with the cable cut beyond the
-   resistor. Worth stating on the schematic *and* in whatever the installer
-   actually reads.
+5. ~~**The end-of-line resistor is an installation instruction**, not a BOM
+   line on the board.~~ **Overtaken by the star decision below** — it is now a
+   BOM line on the board, and the degradation this warned about is what the
+   design has, deliberately.
+
+### The installation is a star — decision, 2026-08-07
+
+The PCB is the hub; the draw-wire and **each** end switch run their own cable
+back to it. There is no field junction, so the 100 k summing resistors and the
+470 k have nowhere to live except the PCB.
+
+This invalidates the supervision the whole ladder was chosen for, and it is
+worth being blunt about why, because the reasoning above reads as if the
+supervised loop were free. It was never free — it was paid for with a junction
+box at the window, and that box is what the star declines to install.
+
+**What a cut costs, in counts.** With the summing on the board, an open sensor
+cable removes that branch's pull-up, and *removed* lands between *inactive*
+and *active*:
+
+| | Node | Counts |
+|---|---|---|
+| Normal, both inactive | 5.52 V | 547 |
+| One sensor at a stop | 3.02 V | **299** |
+| One sensor cable open | 3.40 V | **337** |
+
+38 counts apart, inside one band. So a cut does not read as a fault, it reads
+as **a stop that did not happen** — and a false stop is worse than a detected
+fault, because the controller acts on it rather than alarming.
+
+**And it cannot be tuned out.** §4.4.4 needs ≥45 counts of margin just for the
+±15 % supply tolerance, so 38 was never going to survive. Nothing at the far
+end helps either: a cut removes the branch whatever is fitted there, and the
+resulting level is set entirely by what remains on the board. This is the same
+wall as "What a 2-switch ladder can and cannot do" above — one 10-bit pin,
+four bands, no room for a fifth state. The pin is out of
+resolution, not the values out of tune.
+
+**What the star buys back.** Not nothing, and the gain is where the
+leakage analysis under "Humidity" below already taught us to look. Field-mounted 100 k and 470 k would sit uncoated in the
+dampest, least controlled part of the installation:
+
+| Leakage in the junction | Breaks at | Effect |
+|---|---|---|
+| signal → 0 V | 37 kΩ | *normal* reads as a stop — false stop |
+| signal → +V | **182 kΩ** | *one active* reads as normal — **a real stop is missed** |
+
+The second is five times easier to reach, sits between adjacent terminals, and
+fails in the direction where the window keeps driving. On the PCB, inside IP65
+and coated, both stop mattering. So the star moves one hidden failure out of
+the harness and turns one detectable failure into a hidden one. A trade, not a
+rout — but the losing side of it is now a **Must** requirement narrowed
+(FR-E16) and that deserved recording rather than absorbing.
+
+**The mitigation that is still available.** Firmware, not hardware: once
+FR-E19 has taught the endpoints, a stop claimed while the wiper sits far from
+either calibrated end is implausible, and the two independent front-ends can
+check each other. That would catch most of this class for free. Not specified
+— it needs a tolerance, and an answer for what to do before the first teach.
+Recorded in TDS §6.
 
 ---
 

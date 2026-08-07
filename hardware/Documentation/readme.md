@@ -32,9 +32,14 @@ glands are supplied. The installation needs:
 | 1 | RS-485 bus in |
 | 2 | RS-485 bus out (daisy chain, TDS §4.1) |
 | 3 | Draw-wire sensor |
-| 4 | End-switch loop |
-| 5 | Pressure-equalisation vent plug (TDS §4.5) |
+| 4 | End switch A |
+| 5 | End switch B |
+| 6 | Pressure-equalisation vent plug (TDS §4.5) |
 
-That is **five of the six entries used and two more glands plus the vent to
-buy**. The vent occupying an entry is easy to overlook when the box is
-specified by cable count alone.
+That is **all six entries used, with three more glands plus the vent to buy
+and nothing spare.** Two things make this tighter than it looks: the vent
+occupies an entry, which is easy to overlook when a box is specified by cable
+count alone; and the **star topology** (TDS §4.4, decided 2026-08-07) gives
+each end switch its own run to the hub instead of summing them in a field
+junction, which costs the sixth entry. If anything else ever has to enter this
+box, it needs a different box.
