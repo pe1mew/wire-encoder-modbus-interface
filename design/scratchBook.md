@@ -743,10 +743,16 @@ Things to think about when the schematic starts:
   weather-mounted sensors. A draw-wire unit on a window frame is a different
   environment — likely a screw terminal or an M12, and it needs conductors
   for the pot (3) plus the end-switch loop (2).
-- **Wiper ESD/clamp.** The cable runs to a moving frame, possibly outdoors.
-  The sibling board deliberately fits no RC filter on the wiper (ratiometric
-  operation plus the 73-cycle sample time carry the stability), but a clamp
-  diode pair is a different question from a filter, and worth having.
+- ~~**Wiper ESD/clamp.**~~ **DONE 2026-08-07** — and the note was right that
+  "a clamp diode pair is a different question from a filter". What it did not
+  anticipate is that **a diode pair is the wrong answer**: Schottky leakage on
+  a 2.5 kΩ node reaches ~32 µA at +65 °C, which is 25 counts — 2.4 % of full
+  scale against a sensor specified at 0.2 %. So does a 3V3 zener, non-linearly.
+  The wiper node's ≥10 MΩ leakage rule turns out to govern component choice,
+  not just cleanliness. Fitted instead: R11 10 kΩ as the actual current
+  limiter (a TVS cannot hold a sustained 24 V short — it is a transient part),
+  C6 1 nF as a charge reservoir so the 10 kΩ costs nothing at the ADC, and D3
+  a TVS specified at ≤100 nA. See TDS §4.3, §4.6.1 and FR-E21.
 - **Keep the wiper node clean, short and away from the gland entries.** It is
   the one node on this board where a moisture film is an accuracy problem
   rather than a reliability one (see below). Generous clearance costs nothing

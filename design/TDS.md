@@ -290,7 +290,7 @@ implementation.
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-E11 | Must | The raw code shall be obtained by reading the potentiometer wiper voltage on PA2 using the ADC in 10-bit ratiometric mode referenced to VDD. No external reference shall be used. | Via 30005: wiper at each mechanical end stop reads ≤5 and ≥1018 respectively. |
-| FR-E12 | Must | The ADC sample time shall be configured to ≥71 cycles to accommodate the 10 kΩ potentiometer source impedance. | Code review confirms the sample-time setting. Via 30005: 32 consecutive reads at a fixed mid position span ≤3 counts. |
+| FR-E12 | Must | The ADC sample time shall be configured to **≥241 cycles**. The pot contributes 2.5 kΩ at mid-scale and FR-E21's protection adds 10 kΩ in series, so the DC source impedance is 12.5 kΩ — above the 10 kΩ the previous ≥71-cycle setting was chosen for. The C6 reservoir (§4.3) means the sample capacitor does not actually charge through that resistance, but the longer sample time costs nothing measurable (~42 µs per conversion against a ≥100 ms window) and removes the need to rely on the reservoir argument. | Code review confirms the sample-time setting. Via 30005: 32 consecutive reads at a fixed mid position span ≤3 counts, and the mid-scale code shifts ≤1 count when R11 is shorted out on the bench. |
 | FR-E13 | Must | Each update of 30001 shall be derived from ≥16 ADC conversions (mean, or median with outlier rejection) at an update rate of ≥10 Hz. | Code review of the conversion scheme; the FR-E03 stability criterion (span ≤3 LSB over 100 reads) passes. |
 
 ### 3.5 End-of-travel switches
@@ -309,6 +309,7 @@ resistor values; the derivation is in `design/scratchBook.md`.
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-E20 | Should | Input register 30015 shall report the window opening as a percentage of the configured full travel, in units of 0.1 % (0–1000), derived from the *instantaneous* opening (30001) so that it tracks the same value a positioning loop reads. It shall be computed as `(30001 − 40001) × 1000 / 40004`, clamped to 1000, and shall carry the FR-E07 fault sentinel 65535 whenever 30001 does. | With the window at the calibrated closed point 30015 reads 0; at full travel it reads 1000; at the midpoint 500 ±1. Halving 40004 doubles the reported percentage for the same physical position. Disconnecting the wiper drives it to 65535 alongside 30001. |
+| FR-E21 | Must | The wiper input shall survive a **sustained** short of any J4 field conductor to the +24 V rail, indefinitely and without damage, while keeping the current injected into PA2 within the CH32V003's **±4 mA** absolute maximum (datasheet §3.2). This is met by a **10 kΩ series element** (R11), which limits the fault to **2.4 mA** at 27.6 V — 24 V passive PoE at +15 % — with the MCU's own clamp conducting at ≈3.9 V. A **bidirectional TVS to GND** (D3) and a **1 nF reservoir capacitor** (C6) sit on the protected side of R11. Any clamp fitted to this node shall leak **≤100 nA at 3.3 V across the whole NFR-ENV01 range**; §4.6's ≥10 MΩ wiper-node rule applies here and is what disqualifies the obvious candidates (§4.6). Note the resistor, not the TVS, is the current limiter: a TVS is a transient device and cannot hold a low-impedance 24 V short. | Apply +27.6 V to each J4 pin in turn for 60 s. The device reports status bit 2 (FR-E07) during, and after removal meets FR-E03 unchanged. Measure the mid-scale raw code with D3 fitted and unfitted at both NFR-ENV01 extremes: the difference shall be ≤1 count. |
 | FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the four states of the §4.4 band table: normal, one sensor active, both active, cable fault. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". The bands tile the whole range, and the lowest band is the fault — so an input shorted to 0 V, or one never connected, classifies as a fault rather than as a healthy loop. **An open sensor cable does not**: in the star topology it lands at 337 counts and is decoded as "one sensor active" (§4.4.3). | At each of the four nominal divider values the classification matches the table and status bit 3 follows. Shorting the input at the board reads 0 counts and sets status bit 4. Disconnecting one sensor cable reads ≈337 and sets bit 3 — the known limit, not a defect. |
 | FR-E15 | Must | The classified switch state shall be debounced in firmware: a change shall be published only after the new state has been observed continuously for ≥20 ms. Sampling and debouncing shall never gate, delay or suppress the FR-MB20 response timing, the measurement path, or the FR-S20 watchdog feed. | Inject a 5 ms bounce burst: bit 3 changes exactly once, with no intermediate toggling visible to a master polling at 50 ms. The FR-MB21 latency histogram matches one taken with the switch input idle, within 2 ms. |
 | FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. **Scope, narrowed 2026-08-07 with the star topology:** bit 4 covers a signal shorted to 0 V and both switches active at once. It does **not** cover an open conductor in a sensor cable, which is indistinguishable from a genuine stop (§4.4.3) — the device cannot detect that condition and must not be documented as if it can. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Short the switch input: bit 4 sets within 200 ms, bit 3 clears, and 30001 continues to track the window unchanged. Close both switches at once: same. Restore: bit 4 clears within 200 ms. **Negative test:** disconnect one sensor cable — bit 4 stays clear and bit 3 sets, confirming the documented limit rather than contradicting it. |
@@ -396,14 +397,49 @@ ladder's source impedance with a switch closed is ≤5 kΩ, well inside the
 The only thing given up is PC1's 5 V tolerance on the switch loop; the §4.4
 ladder is fed from the board's own 3.3 V pull-up and never needed it.
 
-### 4.3 Wiper front-end (proposed)
+### 4.3 Wiper front-end (protected, 2026-08-07)
 
 The draw-wire encoder's 10 kΩ potentiometer is fed ratiometrically from the
-3.3 V rail; the wiper drives PA2 directly. The ADC is 10-bit ratiometric to
-VDD with no external reference (FR-E11) and a ≥71-cycle sample time for the
-source impedance (FR-E12). Following the sibling board, no RC filter is
-placed on the wiper node: ratiometric operation cancels rail ripple, and an
-external reference would break that cancellation.
+3.3 V rail. The ADC is 10-bit ratiometric to VDD with no external reference
+(FR-E11), with a ≥241-cycle sample time (FR-E12).
+
+```
+   3V3 ──── J4.1
+                            protected side
+   J4.2 ──[ R11 10k ]──┬────────┬───────────► PA2 (ADC ch0)
+        wiper           │        │
+                     [ C6 1n ] [ D3 TVS ]
+                        │        │
+   0 V ──── J4.3        └────────┴─────────── GND
+```
+
+Until 2026-08-07 the wiper ran **bare** from the terminal block to PA2 — no
+series element, no clamp — while the switch input two pins away had all three.
+That asymmetry was inherited from the sibling board, whose `ANALOG_IN` also
+went straight from the RJ14 to the MCU, and it had been sitting in §6 as
+"wiper ESD protection" since the first draft. FR-E21 closes it.
+
+- **R11 10 kΩ is the current limiter, not the TVS.** A TVS is a transient
+  device; it cannot hold a low-impedance 24 V short, and a miswired terminal
+  is not a transient. 10 kΩ holds a 27.6 V fault to 2.4 mA against the
+  CH32V003's ±4 mA injected-pin maximum — the same ≈2 mA design point §4.4.2
+  already chose for the switch input.
+- **C6 1 nF is what makes a 10 kΩ series resistor affordable.** The ADC's
+  sample capacitor charges from the reservoir rather than through the
+  resistor, which only has to recharge 1 nF between conversions: 12.5 µs
+  against a ≥100 ms window. It is also sized *small* on purpose — FR-E07
+  detects an open wiper by toggling the internal pull resistor between
+  conversions, and that pull is tens of kΩ, so 1 nF settles in ~40 µs where
+  100 nF would take 4 ms and start eating the measurement cadence.
+- **D3 covers what the RC cannot** — fast ESD arriving on a cable that runs
+  to a moving frame. Its leakage specification is the hard part; see §4.6.
+
+No RC *filter* is fitted in the signal sense, and the reason usually given —
+"ratiometric operation cancels rail ripple, so an external reference would
+break the cancellation" — argues against a **reference**, not against a series
+resistor or a clamp. Neither of those breaks ratiometric behaviour. The
+sibling board's decision not to filter was about bandwidth; it was never an
+argument for leaving the pin unprotected.
 
 ### 4.4 End-switch interface — attenuating divider (redesigned 2026-07-29)
 
@@ -663,6 +699,30 @@ coating on this board is not a longevity nicety. It is part of the accuracy
 budget. A damp uncoated board would fail FR-E03 quietly — plausible readings,
 no fault flag, nothing visibly wrong.
 
+#### 4.6.1 The same rule governs the clamp part (FR-E21)
+
+The table above is usually read as being about *moisture*. It is really about
+**any** current path off the wiper node, and that makes it a component
+selection rule as well as a cleanliness one. D3 sits directly on that node, so
+its reverse leakage lands in the same column — and this disqualifies both
+obvious candidates:
+
+| Candidate | Leakage on a 2.5 kΩ node | Verdict |
+|---|---|---|
+| **BZX84-C3V3** — the clamp already used on PC4 | µA-scale well below breakdown, and **voltage-dependent** | ≈12 mV, ~4 counts, and **non-linear** — calibration cannot remove it |
+| **BAT54S** — the reflex ADC clamp | ~2 µA at 25 °C, roughly doubling per 10 °C → ≈32 µA at +65 °C | ≈80 mV, **25 counts, 2.4 % of full scale** against a sensor specified at 0.2 % |
+| **Low-leakage TVS, ≤100 nA** | ≤100 nA across the NFR-ENV01 range | ≤0.25 mV, <0.1 count — acceptable |
+
+The trap is that PC4 and PA2 sit at comparable impedance — 4.35 kΩ and 2.5 kΩ
+— so the PC4 clamp *looks* transferable. It is not, and the difference is not
+impedance but what is being measured: PC4 resolves four bands with 45 counts
+of margin, PA2 is the 10-bit measurement the product exists to make. A part
+that is invisible on one is disqualifying on the other.
+
+**D3's part number is therefore a specification, not a preference**, and it is
+the one line of the BOM that must be chosen against a datasheet leakage figure
+rather than a package and a voltage.
+
 ---
 
 ## 5. Non-functional requirements
@@ -800,11 +860,18 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   sizes are a BOM item, and the condensation strategy (conformal coating is
   the recommended default) must be picked before the first build.
 
-- **Hardware.** No schematic. §4 is an assumed baseline, not an as-built
-  record. Residual: wiper ESD protection given the cable run to the moving
-  frame, and the physical form of the end-switch loop (§4.3/§4.4). Actuator
+- **Hardware — schematic now exists** (2026-08-07), verified with
+  `kicad-cli` for ERC and netlist. **Wiper protection is CLOSED**: §4.3 and
+  FR-E21 fit R11/C6/D3, replacing a bare run from the terminal block to PA2
+  that had been inherited from the sibling board. Residual: the physical form
+  of the end-switch runs (§4.4), and **D3's part number**, which must be
+  selected against a datasheet leakage figure of ≤100 nA at 3.3 V over the
+  full NFR-ENV01 range (§4.6.1) — the schematic carries the symbol with the
+  footprint deliberately blank so it cannot be laid out unselected. Actuator
   motor noise on the sensor cable has no precedent in the sibling project's
-  bench work and is the most likely source of an installation surprise.
+  bench work and is the most likely source of an installation surprise; R11
+  and C6 now give it a 12.5 µs time constant to fight, which it did not have
+  before.
 
 - **Averaging engine.** FR-S31's two-stage boxcar is carried over from the
   sibling design. The opening is a scalar, so that project's circular-mean

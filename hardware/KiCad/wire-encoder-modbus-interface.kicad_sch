@@ -566,6 +566,172 @@
 			)
 			(embedded_fonts no)
 		)
+		(symbol "Device:D_TVS"
+			(pin_numbers
+				(hide yes)
+			)
+			(pin_names
+				(offset 1.016)
+				(hide yes)
+			)
+			(exclude_from_sim no)
+			(in_bom yes)
+			(on_board yes)
+			(in_pos_files yes)
+			(duplicate_pin_numbers_are_jumpers no)
+			(property "Reference" "D"
+				(at 0 2.54 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Value" "D_TVS"
+				(at 0 -2.54 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Footprint" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Datasheet" ""
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "Description" "Bidirectional transient-voltage-suppression diode"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_keywords" "diode TVS thyrector"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(property "ki_fp_filters" "TO-???* *_Diode_* *SingleDiode* D_*"
+				(at 0 0 0)
+				(show_name no)
+				(do_not_autoplace no)
+				(hide yes)
+				(effects
+					(font
+						(size 1.27 1.27)
+					)
+				)
+			)
+			(symbol "D_TVS_0_1"
+				(polyline
+					(pts
+						(xy -2.54 1.27) (xy -2.54 -1.27) (xy 2.54 1.27) (xy 2.54 -1.27) (xy -2.54 1.27)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 0.508 1.27) (xy 0 1.27) (xy 0 -1.27) (xy -0.508 -1.27)
+					)
+					(stroke
+						(width 0.254)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+				(polyline
+					(pts
+						(xy 1.27 0) (xy -1.27 0)
+					)
+					(stroke
+						(width 0)
+						(type default)
+					)
+					(fill
+						(type none)
+					)
+				)
+			)
+			(symbol "D_TVS_1_1"
+				(pin passive line
+					(at -3.81 0 0)
+					(length 2.54)
+					(name "A1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "1"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+				(pin passive line
+					(at 3.81 0 180)
+					(length 2.54)
+					(name "A2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+					(number "2"
+						(effects
+							(font
+								(size 1.27 1.27)
+							)
+						)
+					)
+				)
+			)
+			(embedded_fonts no)
+		)
 		(symbol "Device:R"
 			(pin_numbers
 				(hide yes)
@@ -3074,6 +3240,12 @@
 		(uuid "158ad1bc-d48f-4ac8-87e0-0a1a63a1e74c")
 	)
 	(junction
+		(at 223.52 116.84)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "1b2dde0f-37dc-4789-84a8-0d361e1154fb")
+	)
+	(junction
 		(at 91.44 109.22)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3212,6 +3384,12 @@
 		(uuid "704fadd2-41e7-40f1-81c3-e9aceeab3a32")
 	)
 	(junction
+		(at 214.63 132.08)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "70bd2e07-bf55-477e-aa55-4ee04a23d0b2")
+	)
+	(junction
 		(at 238.76 99.06)
 		(diameter 0)
 		(color 0 0 0 0)
@@ -3230,10 +3408,22 @@
 		(uuid "88987852-dc0e-4673-928d-d6b3822c3453")
 	)
 	(junction
+		(at 214.63 116.84)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "9337ca6e-f29f-426a-82bb-56696105a7a2")
+	)
+	(junction
 		(at 76.2 109.22)
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "9dd70b14-2d6b-4603-8576-889cc9b0bd57")
+	)
+	(junction
+		(at 223.52 132.08)
+		(diameter 0)
+		(color 0 0 0 0)
+		(uuid "b186ed69-0cc8-4cee-97e0-4aeeae312d46")
 	)
 	(junction
 		(at 111.76 181.61)
@@ -3276,6 +3466,16 @@
 		(diameter 0)
 		(color 0 0 0 0)
 		(uuid "fba574b6-5279-45c3-984d-2c010b70df3b")
+	)
+	(wire
+		(pts
+			(xy 223.52 127) (xy 223.52 132.08)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "00d1a229-7a91-4dbe-b83d-245529865216")
 	)
 	(wire
 		(pts
@@ -3539,6 +3739,16 @@
 	)
 	(wire
 		(pts
+			(xy 223.52 116.84) (xy 223.52 119.38)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "1cbeb619-d77e-4169-9aa1-218a1b18668f")
+	)
+	(wire
+		(pts
 			(xy 223.52 114.3) (xy 227.33 114.3)
 		)
 		(stroke
@@ -3679,6 +3889,16 @@
 	)
 	(wire
 		(pts
+			(xy 234.95 132.08) (xy 245.11 132.08)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3717d72f-3420-4331-b141-b0c827aab38b")
+	)
+	(wire
+		(pts
 			(xy 45.72 161.29) (xy 55.88 161.29)
 		)
 		(stroke
@@ -3696,6 +3916,16 @@
 			(type default)
 		)
 		(uuid "39aef612-700f-4a24-99df-28f1e96f28a8")
+	)
+	(wire
+		(pts
+			(xy 214.63 127) (xy 214.63 132.08)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3a4b6856-c0e8-49ff-83ee-3f77384ecacf")
 	)
 	(wire
 		(pts
@@ -3719,6 +3949,16 @@
 	)
 	(wire
 		(pts
+			(xy 223.52 132.08) (xy 227.33 132.08)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "3f6753e7-4bda-4b63-8f04-3fed11c6b37f")
+	)
+	(wire
+		(pts
 			(xy 82.55 166.37) (xy 88.9 166.37)
 		)
 		(stroke
@@ -3736,6 +3976,16 @@
 			(type default)
 		)
 		(uuid "403395fc-6a95-4212-8503-a33ba1018873")
+	)
+	(wire
+		(pts
+			(xy 214.63 116.84) (xy 214.63 119.38)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "404652fd-4129-47a8-bdf3-f02f0670d056")
 	)
 	(wire
 		(pts
@@ -3979,7 +4229,17 @@
 	)
 	(wire
 		(pts
-			(xy 207.01 116.84) (xy 241.3 116.84)
+			(xy 176.53 132.08) (xy 214.63 132.08)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "6c454e94-13fc-4d4a-b3dc-32ce5ec4652e")
+	)
+	(wire
+		(pts
+			(xy 207.01 116.84) (xy 214.63 116.84)
 		)
 		(stroke
 			(width 0)
@@ -3996,6 +4256,26 @@
 			(type default)
 		)
 		(uuid "6fc32897-5084-4bb7-8e98-cb33771d60c6")
+	)
+	(wire
+		(pts
+			(xy 214.63 132.08) (xy 223.52 132.08)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "718fece8-0cc5-4cd9-9955-96e4e17605a8")
+	)
+	(wire
+		(pts
+			(xy 223.52 116.84) (xy 241.3 116.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "729d1d61-994f-4208-9e1c-72455075fb0a")
 	)
 	(wire
 		(pts
@@ -4256,16 +4536,6 @@
 			(type default)
 		)
 		(uuid "95751b77-52c1-40bf-8720-4f763c8e9128")
-	)
-	(wire
-		(pts
-			(xy 176.53 132.08) (xy 245.11 132.08)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "9643b258-9be3-4357-8f88-e7500691d506")
 	)
 	(wire
 		(pts
@@ -5016,6 +5286,16 @@
 			(type default)
 		)
 		(uuid "fa91e949-ddce-4af9-b0a4-5b22c57b5f0d")
+	)
+	(wire
+		(pts
+			(xy 214.63 116.84) (xy 223.52 116.84)
+		)
+		(stroke
+			(width 0)
+			(type default)
+		)
+		(uuid "fb02e6c8-3ff5-43fb-b60d-1c2421999709")
 	)
 	(wire
 		(pts
@@ -6304,7 +6584,7 @@
 		(dnp no)
 		(uuid "38127743-7df6-4e96-b318-d39a29223480")
 		(property "Reference" "J6"
-			(at 251.46 115.57 0)
+			(at 254.508 116.586 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -6971,7 +7251,7 @@
 		(dnp no)
 		(uuid "6e1ada48-85da-45c1-be02-7df562a03af4")
 		(property "Reference" "J5"
-			(at 251.46 102.87 0)
+			(at 254.508 103.886 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -7945,6 +8225,251 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:R")
+		(at 231.14 132.08 90)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "beef0001-0000-4000-8000-000000000000")
+		(property "Reference" "R11"
+			(at 233.426 134.874 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10k"
+			(at 233.172 137.16 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder"
+			(at 231.14 132.08 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 231.14 132.08 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 231.14 132.08 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "beef0002-0000-4000-8000-000000000000")
+		)
+		(pin "2"
+			(uuid "beef0003-0000-4000-8000-000000000000")
+		)
+		(instances
+			(project "wire-encoder-modbus-interface"
+				(path "/7e9d7b84-ea76-433c-8a90-337ecd1345cc"
+					(reference "R11")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:C")
+		(at 223.52 123.19 0)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "beef0004-0000-4000-8000-000000000000")
+		(property "Reference" "C6"
+			(at 226.06 121.92 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "1n"
+			(at 226.06 124.46 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_1206_3216Metric_Pad1.33x1.80mm_HandSolder"
+			(at 223.52 123.19 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 223.52 123.19 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 223.52 123.19 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "beef0005-0000-4000-8000-000000000000")
+		)
+		(pin "2"
+			(uuid "beef0006-0000-4000-8000-000000000000")
+		)
+		(instances
+			(project "wire-encoder-modbus-interface"
+				(path "/7e9d7b84-ea76-433c-8a90-337ecd1345cc"
+					(reference "C6")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "Device:D_TVS")
+		(at 214.63 123.19 90)
+		(mirror x)
+		(unit 1)
+		(body_style 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(in_pos_files yes)
+		(dnp no)
+		(uuid "beef0007-0000-4000-8000-000000000000")
+		(property "Reference" "D3"
+			(at 212.09 121.9199 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "PESD5V0S1BA"
+			(at 212.09 124.4599 90)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Diode_SMD:D_SOD-323_HandSoldering"
+			(at 214.63 123.19 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Datasheet" ""
+			(at 214.63 123.19 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Description" ""
+			(at 214.63 123.19 0)
+			(hide yes)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(pin "1"
+			(uuid "beef0008-0000-4000-8000-000000000000")
+		)
+		(pin "2"
+			(uuid "beef0009-0000-4000-8000-000000000000")
+		)
+		(instances
+			(project "wire-encoder-modbus-interface"
+				(path "/7e9d7b84-ea76-433c-8a90-337ecd1345cc"
+					(reference "D3")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Connector:Conn_01x03_Pin")
 		(at 250.19 132.08 0)
 		(mirror y)
@@ -7957,7 +8482,7 @@
 		(dnp no)
 		(uuid "c0de0001-0000-4000-8000-000000000000")
 		(property "Reference" "J4"
-			(at 251.46 133.35 0)
+			(at 254 134.874 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects
@@ -7968,7 +8493,7 @@
 			)
 		)
 		(property "Value" "Draw-wire"
-			(at 265.43 132.334 0)
+			(at 262.128 132.08 0)
 			(show_name no)
 			(do_not_autoplace no)
 			(effects

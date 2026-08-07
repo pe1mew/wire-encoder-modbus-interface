@@ -230,6 +230,47 @@ that also monitors its own cable.
   measurement is no longer ratiometric, and both-active vs cable-fault are
   only just distinguishable — both are bit-4 faults, so treat them as one.
   `regs.c`'s classifier and thresholds updated to match.
+- **The wiper had no protection at all, and now does** (2026-08-07,
+  FR-E21). PA2 ran bare from the terminal block to the MCU — no series
+  element, no clamp — while the switch input two pins away had a 10 k series,
+  a divider and a zener. The asymmetry was inherited from the sibling board,
+  whose `ANALOG_IN` also went straight from the RJ14 to the pin, and it had
+  been sitting in §6 as "wiper ESD protection" since the first draft.
+
+  Fitted: **R11 10 kΩ** in series, **C6 1 nF** as a reservoir and **D3**, a
+  TVS. Three things about that set are not the obvious choices.
+
+  **The resistor is the current limiter, not the TVS.** A TVS is a transient
+  device and cannot hold a low-impedance 24 V short; a miswired terminal is
+  not a transient. 10 kΩ holds a 27.6 V fault (24 V passive PoE at +15 %) to
+  **2.4 mA** against the CH32V003's **±4 mA** injected-pin absolute maximum —
+  the same ≈2 mA design point §4.4.2 had already chosen for the switch input.
+
+  **The capacitor is what makes a 10 kΩ series resistor affordable.** The
+  ADC's sample capacitor charges from the reservoir instead of through the
+  resistor, which only has to recharge 1 nF between conversions: 12.5 µs
+  against a ≥100 ms window. It is deliberately *small* — FR-E07 detects an
+  open wiper by toggling the internal pull resistor between conversions, and
+  at tens of kΩ that pull settles through 1 nF in ~40 µs where 100 nF would
+  take 4 ms and start eating the measurement cadence. FR-E12's sample time
+  goes to ≥241 cycles anyway, which costs ~42 µs per conversion and removes
+  any need to lean on the reservoir argument.
+
+  **The clamp is a specification, not a preference** (new §4.6.1). §4.6's
+  ≥10 MΩ wiper-node rule has always been read as being about moisture; it is
+  really about any current path off that node, which makes it a component
+  rule too. It disqualifies both obvious candidates: the **BZX84-C3V3**
+  already used on PC4 leaks microamps well below breakdown and *non-linearly*,
+  ≈12 mV or 4 counts that calibration cannot remove; and **BAT54S**, the
+  reflex ADC clamp, leaks ~2 µA at 25 °C and roughly doubles per 10 °C, so at
+  NFR-ENV01's +65 °C ceiling it is ≈32 µA — **80 mV, 25 counts, 2.4 % of full
+  scale** against a sensor specified at 0.2 %. The trap is that PC4 and PA2
+  sit at comparable impedance so the PC4 clamp looks transferable; the
+  difference is not impedance but that PC4 resolves four bands with 45 counts
+  of margin while PA2 is the measurement the product exists to make. D3 is
+  therefore specified at **≤100 nA at 3.3 V across the full NFR-ENV01 range**
+  and left with a blank footprint so it cannot be laid out unselected.
+
 - **The installation is a star, and it costs the cable supervision**
   (2026-08-07). The PCB is the hub; the draw-wire and **each** end switch run
   their own cable to it. There is no field junction, so the 100 k summing
