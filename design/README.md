@@ -35,8 +35,9 @@ distinction matters when you pick up the work.
 | [`driverDevelopment.md`](driverDevelopment.md) | Plan + results per standalone driver, each HIL-verified before integration. | Phase 0 and phase 2 satisfied by carried-over code; **phase 1 (the encoder driver) not started** — ready to begin, the sibling project's vane driver is the reference |
 | [`integrationPlan.md`](integrationPlan.md) | The product-firmware plan: stages A–F, each with an exit criterion, plus the hardware-gated test set. | Stages A–C done (skeleton, board, register image + persistence); D–F not started |
 | [`scratchBook.md`](scratchBook.md) | The brainstorm and working notes seeding the TDS — the sensor, the pin budget, scaling derivation, resolution/range decision, hardware questions. | Working notes |
+| [`windowEmulator.md`](windowEmulator.md) | **Window and window-controller emulator** — a bench rig standing in for a window and its actuator controller: the control logic and its truth table, plus the mechanical and safety requirements. Scoped to the rig alone; it specifies nothing about what is mounted on it. | **v0.3 draft.** Control logic and its two-relay realisation accepted; axis length and drive open. Nothing built |
 | [`requirementsCompliance.md`](requirementsCompliance.md) | Compliance check against the `greenhouse-Controller` M3 window-position-sensor requirements study — a matrix of that document's FR-WP/NF-WP requirements against this design, with the gaps. | Analysis only; the source study is itself marked *not adopted* |
-| [`diagrams/`](diagrams/) | UML diagrams as PlantUML sources + rendered PNGs (see below). | — |
+| [`diagrams/`](diagrams/) | UML diagrams as PlantUML sources + rendered PNGs, plus the window-emulator controller schematic (see below). | — |
 
 ## The constraint that shapes everything
 
@@ -62,6 +63,10 @@ Three UML views live in [`diagrams/`](diagrams/) and are embedded in
   modules are shaded.
 - **[`superloop_sequence.puml`](diagrams/superloop_sequence.puml)** — one
   zero-ISR super-loop iteration.
+- **[`windowEmulatorController.py`](diagrams/windowEmulatorController.py)** —
+  not UML: the window-emulator controller schematic, rendered to
+  `windowEmulatorController.png` by running the script. Embedded in
+  [`windowEmulator.md`](windowEmulator.md) §3.
 - **[`modbus_state.puml`](diagrams/modbus_state.puml)** — the Modbus RTU
   line-discipline state machine, carried over unchanged from the sibling
   project (the protocol behaviour is identical).
