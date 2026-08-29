@@ -6,8 +6,8 @@
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
 | Checked against | `greenhouse-Controller/design/windowPositionSensorRequirements.MD`, dated 2026-07-28 (marked PRELIMINARY STUDY — not adopted) |
-| This design | `design/TDS.md` **v0.5**, `design/description.md` |
-| Status | Updated through TDS v0.5. The two gaps this analysis originally raised are both closed; what remains is listed in §4. |
+| This design | `design/TDS.md` **v0.6**, `design/description.md` |
+| Status | Updated through TDS v0.6. The two gaps this analysis originally raised are both closed; what remains is listed in §4. |
 
 ---
 
@@ -31,16 +31,18 @@ this design satisfies all three by construction.
 | What it measures (§2) | FR-WP01…07, 21, 22 | **Met**, subject to the sensor unit's own accuracy |
 | Timing (§3) | FR-WP08, 09, 10 | **Met**, with a maximum-age contract (FR-E17). The shipped default window is too long for this application and must be set at commissioning |
 | Modbus/electrical (§4) | FR-WP11…15, NF-WP01, 02 | **Met**, except FR-WP11 partially and a connector mismatch |
-| Environment (§5) | NF-WP03…08 | **Addressed** by the §4.5 enclosure strategy and NFR-ENV02…05 — except NF-WP03's +70 °C, which the end switch caps at +65 °C, and the draw-wire unit's own cycle life |
+| Environment (§5) | NF-WP03…08 | **Addressed** by the §4.5 enclosure strategy and NFR-ENV02…05. NF-WP03's +70 °C is now met (2026-08-08 sensor change); the draw-wire unit's IP50 rating remains the open point |
 | Failure behaviour (§6) | FR-WP16…20 | **Met** for the parts that are the sensor's to meet |
 
-Counting only what is this device's responsibility: **27 met, 3 met with
-caveats, 4 belong to the controller.** The procurement conditions this
+Counting only what is this device's responsibility: **28 met, 2 met with
+caveats, 4 belong to the controller** — NF-WP03 moved into the met column on
+2026-08-08 with the end-switch change. The procurement conditions this
 analysis originally raised — wiper life and mechanism accuracy — are both
 closed by the supplier specification. The three that remain are in §4, and
 only one of them is a requirement missed outright rather than narrowed with
 its cause named: **NF-WP05, because the draw-wire unit is IP50 and lives
-outside the box.**
+outside the box.** It is now the *only* such requirement — the temperature
+ceiling that used to keep it company is closed.
 
 ---
 
@@ -95,7 +97,7 @@ rather than relying on the seal alone.
 
 | ID | Req | Verdict | Note |
 |---|---|---|---|
-| NF-WP03 | −20 °C to +70 °C | ⚠️ **Low end met, high end 5 °C short** | NFR-ENV01 is now **−25 °C to +65 °C** (narrowed 2026-07-29). The cold end has margin; the hot end does not reach +70 °C because the **LJ18A3-8-Z/BX end switch is rated to +65 °C** and is the narrowest part in the chain — the electronics would have carried +70 °C. **This is the one requirement the design knowingly does not meet in full.** It matters because the sensor sits at the window frame, exactly where the solar gain that motivated the +70 °C figure occurs, even though measured greenhouse air peaks at 33 °C. Resolution is a survey of the mounting position; if it can exceed 65 °C, the fix is a wider-range end switch |
+| NF-WP03 | −20 °C to +70 °C | ✅ **Met — closed 2026-08-08** | NFR-ENV01 is **−25 °C to +70 °C**. It was narrowed to +65 °C on 2026-07-29 because the LJ18A3-8-Z/BX end switch capped it there, and this row then carried the note that it was *the one requirement the design knowingly does not meet in full*. Replacing that sensor with the **3RG4023-3AB00**, rated **−25…+85 °C**, removes the constraint: the sensor is no longer the narrowest part and the limit reverts to the electronics, which carry +70 °C. The predicted fix — "a wider-range end switch" — is exactly what happened, arriving as a change of part rather than as a survey. *Evidence gap:* +70 °C is inherited from the sibling project's part set and still needs the NFR-ENV01 chamber run to become measured rather than asserted |
 | NF-WP04 | 100 % RH, condensing | ✅ **Met** | **NFR-ENV02.** Sealed and glanded enclosure, plus protection of the board itself against condensation (conformal coating the recommended default) — because a sealed box in a swinging temperature still breathes. The acceptance criterion is a condensing-night cycle, which is AT-WP08 |
 | NF-WP05 | IP65 minimum, IP67 preferred | ⚠️ **Enclosure meets the minimum; the sensor does not** | **NFR-ENV03: IP65.** The earlier RJ45 objection dissolves once the connectors are *inside* the box: ingress protection is a property of the enclosure and its glands, so an ordinary connector in a sealed enclosure is fine (§4.5). The selected **Kopp 99966478 is IP65** — the stated minimum, and NFR-ENV03 was narrowed to match it rather than claim an IP67 the BOM does not deliver. The study's IP67 preference was for hardware *at the aperture*; this box is not. **But the draw-wire unit itself is only IP50** and necessarily sits outside it on the window frame. That is the weakest environmental point in the design — see §4 |
 | NF-WP06 | UV and greenhouse chemical resistance | ✅ **Met** | **NFR-ENV04.** Mounted out of direct UV inside the greenhouse structure, which is the shaded-position answer; where an installation cannot guarantee that, the requirement falls back to a UV-stabilised enclosure |
@@ -106,7 +108,7 @@ rather than relying on the seal alone.
 
 | ID | Req | Verdict | Evidence / note |
 |---|---|---|---|
-| FR-WP16 | Failure detectable; no stale, frozen or plausible-but-wrong data | ✅ **Met — with one honest limit** | A disconnected or shorted wiper reports **65535** in all four position registers plus status bit 2 (FR-E07) — an explicit, out-of-band error, not silence and not a plausible number. 30011 (seconds since last valid reading) catches the "readings stopped without the detector tripping" case. **Two limits.** No position sensor can detect a *slipped wire* — it produces a plausible wrong reading; the end switches are the partial defence, and FR-WP03/AT-WP09 puts the rest in the controller as commanded-vs-measured divergence. And since the star topology (TDS §4.4, 2026-08-07) the end switches have a plausible-but-wrong mode of their own: an open sensor cable reports a false end of travel with no fault flag. The wiper path still meets this requirement in full; the switch path now has a documented gap, and the same controller-side divergence check is its best defence too |
+| FR-WP16 | Failure detectable; no stale, frozen or plausible-but-wrong data | ✅ **Met — with one honest limit** | A disconnected or shorted wiper reports **65535** in all four position registers plus status bit 2 (FR-E07) — an explicit, out-of-band error, not silence and not a plausible number. 30011 (seconds since last valid reading) catches the "readings stopped without the detector tripping" case. **Two limits.** No position sensor can detect a *slipped wire* — it produces a plausible wrong reading; the end switches are the partial defence, and FR-WP03/AT-WP09 puts the rest in the controller as commanded-vs-measured divergence. And the end switches have a plausible-but-wrong mode of their own: an open sensor cable is undetected. Note the *direction* changed on 2026-08-08 — under the previous NPN sensor a cut read as a **false** stop; under the PNP 3RG4023-3AB00 it reads as a **missed** stop. Neither is flagged, and the fault band is gone entirely, because a PNP normally-open output looks the same inactive, open-circuit and shorted to 0 V. The wiper path still meets this requirement in full; the switch path now has a documented gap, and the same controller-side divergence check is its best defence too |
 | FR-WP17 | Controller falls back to time-based control | ➖ **Controller-side** | This device's contribution is making the failure unambiguous so the fallback can trigger |
 | FR-WP18 | Wind override must not depend on position | ➖ **Controller-side** | Nothing here creates such a dependency |
 | FR-WP19 | Fault surfaced to the operator | ➖ **Controller-side** | Status bits 2 and 4 are the raw material |
@@ -165,10 +167,13 @@ as parts are picked, and the narrowest part sets the answer.
    electronics and does nothing for the sensor. Options: a sheltered mounting
    position, a shroud, or a higher-rated unit.
 
-2. **Ambient ceiling +65 °C against +70 °C asked (NF-WP03).** Set by the
-   LJ18A3-8-Z/BX end switch and now stated honestly in NFR-ENV01 rather than
-   claimed and unmet. Resolvable by survey — if the mounting position cannot
-   exceed 65 °C the gap is theoretical — or by a wider-range switch.
+2. ~~**Ambient ceiling +65 °C against +70 °C asked (NF-WP03).**~~ **CLOSED
+   2026-08-08** by replacing the LJ18A3-8-Z/BX with the 3RG4023-3AB00, rated
+   −25…+85 °C. The old entry said the fix was "a wider-range switch"; that is
+   what happened. What replaces it is smaller and different in kind: the
+   +70 °C figure is now an assertion about the **electronics**, inherited from
+   the sibling project rather than measured here, and it needs the NFR-ENV01
+   chamber run to become evidence.
 
 3. **Address configurability (FR-WP11).** A solder jumper giving two fixed
    addresses, not an arbitrary one. Adequate for a single M3 sensor and clear

@@ -184,74 +184,68 @@ static persist_settings_t persisted;
  * The two LJ18A3-8-Z/BX proximity sensors are summed in a field junction and
  * attenuated at the board:
  *
- *   +V --[470k]--+                          (470k = end-of-line, in the field)
- *   A  --[100k]--+---- signal ----[10k]--+-- PC4
- *   B  --[100k]--+                       |
- *                                      [4k7]
- *                                        |
- *                                       GND
+ *   OUT A --[68k]--+
+ *   OUT B --[68k]--+---- sum ----[10k]--+-- PC4
+ *                                       |
+ *                                     [4k7]
+ *                                       |
+ *                                      GND
  *
- * The sensors are NOT open-collector: each has an internal 10k pull-up to +V
- * (LJ_en.pdf p.2), so an inactive sensor SOURCES 24 V rather than floating.
- * Hence a divider down from the sensor supply, not a pull-up to 3V3 — the
- * earlier pull-up topology would have put 10-14 V on this pin.
+ * SENSOR: 3RG4023-3AB00, 3-wire DC PNP, normally open (TDS §4.4, 2026-08-08).
+ * PNP sources from +V when it operates and is open when it does not, so the
+ * board supplies the pull-down (the 10k+4k7 attenuator is it) and there is no
+ * pull-up. This REPLACES an NPN part, so every level below is inverted
+ * relative to earlier revisions of this file: normal is now the LOWEST
+ * reading and a fault the highest.
  *
- * Nominals at 24 V, and the bands that decode them. Note the ordering is
- * INVERTED relative to the old design: healthy is now the highest reading and
- * a dead cable is zero.
+ * Nominals at 24 V, drop taken as negligible at the 290 uA this network draws:
  *
- *   normal, between the stops   547   >= 420
- *   one sensor active           299   >= 150   -> end reached
- *   both active (wiring fault)   56   >=  25   -> fault
- *   cable open or shorted         0   <   25   -> fault
+ *   neither active, between the stops    29   <  230
+ *   one sensor active                   423   >= 230   -> end reached
+ *   both active (wiring/mounting fault)  719   >= 510   -> fault
  *
- * Two properties worth not breaking:
+ * THERE IS NO FAULT BAND AT THE BOTTOM, and that is not an oversight. A PNP
+ * normally-open output sources nothing when inactive, when its cable is open,
+ * and when its signal is shorted to 0 V — all three read ~0 and are
+ * indistinguishable. Zero counts is a HEALTHY reading here. An open sensor
+ * cable therefore reports a MISSED stop, silently; under the previous NPN
+ * part it reported a false one. Both are documented limits (FR-E14/FR-E16),
+ * not bugs to be fixed by moving a threshold.
  *
- *   - FAIL-SAFE AGAINST A SHORT, NOT AGAINST AN OPEN. The 4k7 is on the
- *     board, so an input shorted to 0 V or never connected reads 0 and lands
- *     in the fault band. But since the star topology (TDS §4.4, 2026-08-07)
- *     the 100k summing resistors are on the PCB, so an open SENSOR CABLE
- *     never reaches this pin: it leaves that branch unterminated and the node
- *     sits at ~337 counts, which this function decodes as SW_ONE_ACTIVE.
- *     A cut therefore reports a FALSE END OF TRAVEL, silently. That is a
- *     documented limit (FR-E14/FR-E16), not a bug here — do not "fix" it by
- *     moving a threshold, because 337 is only 38 counts from a genuine stop
- *     at 299 and the bands need 45 for supply tolerance alone.
- *   - The 100k summing resistors swamp the sensors' saturation voltage: at
- *     Vsat = 1.5 V "one active" moves by 17 counts, where the old topology
- *     moved 296 and mis-decoded as "normal".
+ * Margins: 84 counts below the 230 threshold even at five times the specified
+ * 10 uA off-state leakage; 23 counts at the 510 threshold in the worst case,
+ * which pits one-active at +15 % supply against both-active at -15 % with the
+ * full datasheet output drop. At any fixed supply the separation is >=176.
+ * That 23 shrinks or grows with the output drop at 290 uA, which is the
+ * measurement TDS §6 is waiting on — the <=2.5 V figure is specified at the
+ * rated 300 mA and should be far smaller here.
  *
- * Tightest margin is 45 counts (normal at -15 % supply vs the 420 threshold).
  * These are computed, not yet measured — see TDS §6. */
-#define SW_TH_NORMAL 420u
-#define SW_TH_ONE    150u
-#define SW_TH_BOTH    25u
+#define SW_TH_ONE   230u
+#define SW_TH_BOTH  510u
 
 typedef enum {
-	SW_CABLE_FAULT = 0, /* shorted to 0 V, or nothing fitted. NOT an open
-	                     * sensor cable — that reads as SW_ONE_ACTIVE */
-	SW_BOTH_ACTIVE,     /* impossible on a working window — wiring fault */
-	SW_ONE_ACTIVE,      /* at an end stop */
-	SW_NORMAL,          /* between the stops */
+	SW_NEITHER = 0,  /* between the stops — and also an open or shorted
+	                  * sensor cable, which cannot be told apart */
+	SW_ONE_ACTIVE,   /* at an end stop */
+	SW_BOTH_ACTIVE,  /* impossible on a working window — wiring fault */
 } sw_state_t;
 
 static sw_state_t sw_classify(uint16_t raw)
 {
-	if (raw >= SW_TH_NORMAL)
-		return SW_NORMAL;
-	if (raw >= SW_TH_ONE)
-		return SW_ONE_ACTIVE;
 	if (raw >= SW_TH_BOTH)
 		return SW_BOTH_ACTIVE;
-	return SW_CABLE_FAULT;
+	if (raw >= SW_TH_ONE)
+		return SW_ONE_ACTIVE;
+	return SW_NEITHER;
 }
 
 /* FR-E15 debounce: a new classification must hold for DEBOUNCE_MS before it is
  * published. Timed off raw SysTick->CNT like everything else in this firmware
  * (design/softwareArchitecture.md) — no timer peripheral, no ISR, no delay. */
 #define DEBOUNCE_MS 20u
-static sw_state_t sw_published = SW_CABLE_FAULT; /* until the first sample */
-static sw_state_t sw_candidate = SW_CABLE_FAULT;
+static sw_state_t sw_published = SW_NEITHER; /* until the first sample */
+static sw_state_t sw_candidate = SW_NEITHER;
 static uint32_t   sw_since;    /* SysTick stamp when the candidate appeared */
 static bool       sw_seen;     /* a sample has arrived at least once */
 
@@ -465,13 +459,15 @@ void regs_publish_switches(uint16_t raw)
 		r_status &= (uint16_t)~STATUS_END_REACHED;
 	}
 
-	/* FR-E16: the three states a healthy installation cannot produce. Reported
-	 * only — the opening registers come from an independent front-end and are
-	 * never suppressed or altered by a switch-loop fault. */
-	if (sw_published == SW_NORMAL || sw_published == SW_ONE_ACTIVE)
-		r_status &= (uint16_t)~STATUS_SWITCH_FAULT;
-	else
+	/* FR-E16: the ONE state a healthy installation cannot produce. Both ends
+	 * reached at once means a switch or its mounting has failed. Reported only
+	 * — the opening registers come from an independent front-end and are never
+	 * suppressed or altered by a switch fault. Narrowed 2026-08-08: with a PNP
+	 * sensor there is no readable cable-fault state to add to this. */
+	if (sw_published == SW_BOTH_ACTIVE)
 		r_status |= STATUS_SWITCH_FAULT;
+	else
+		r_status &= (uint16_t)~STATUS_SWITCH_FAULT;
 }
 
 const mb_config_t *regs_cfg(void)

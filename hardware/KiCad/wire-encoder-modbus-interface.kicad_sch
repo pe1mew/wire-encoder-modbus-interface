@@ -3849,16 +3849,6 @@
 	)
 	(wire
 		(pts
-			(xy 223.52 86.36) (xy 223.52 90.17)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "28829a98-adae-4f3f-ac55-77ba3905200a")
-	)
-	(wire
-		(pts
 			(xy 204.47 55.88) (xy 195.58 55.88)
 		)
 		(stroke
@@ -5169,16 +5159,6 @@
 	)
 	(wire
 		(pts
-			(xy 223.52 97.79) (xy 223.52 101.6)
-		)
-		(stroke
-			(width 0)
-			(type default)
-		)
-		(uuid "eebd5f44-2bf8-4065-8ea4-821de89449a6")
-	)
-	(wire
-		(pts
 			(xy 220.98 30.48) (xy 201.93 30.48)
 		)
 		(stroke
@@ -6331,7 +6311,7 @@
 				)
 			)
 		)
-		(property "Value" "100k"
+		(property "Value" "68k"
 			(at 233.172 111.506 90)
 			(show_name no)
 			(do_not_autoplace no)
@@ -7154,91 +7134,7 @@
 				)
 			)
 		)
-	)
-	(symbol
-		(lib_id "Device:R")
-		(at 223.52 93.98 0)
-		(mirror x)
-		(unit 1)
-		(body_style 1)
-		(exclude_from_sim no)
-		(in_bom yes)
-		(on_board yes)
-		(in_pos_files yes)
-		(dnp no)
-		(fields_autoplaced yes)
-		(uuid "65f9cfc7-36f7-4ba0-84e0-30f962cc1755")
-		(property "Reference" "R10"
-			(at 220.98 92.7099 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-			)
-		)
-		(property "Value" "470k"
-			(at 220.98 95.2499 0)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-				(justify right)
-			)
-		)
-		(property "Footprint" "Resistor_SMD:R_1206_3216Metric_Pad1.30x1.75mm_HandSolder"
-			(at 221.742 93.98 90)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Datasheet" ""
-			(at 223.52 93.98 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(property "Description" "Resistor"
-			(at 223.52 93.98 0)
-			(hide yes)
-			(show_name no)
-			(do_not_autoplace no)
-			(effects
-				(font
-					(size 1.27 1.27)
-				)
-			)
-		)
-		(pin "1"
-			(uuid "2f578ff8-a852-4480-9b9d-5249aca9e061")
-		)
-		(pin "2"
-			(uuid "b8d33995-0e8d-4b05-b3d4-d7274a7d3322")
-		)
-		(instances
-			(project "wire-encoder-modbus-interface"
-				(path "/7e9d7b84-ea76-433c-8a90-337ecd1345cc"
-					(reference "R10")
-					(unit 1)
-				)
-			)
-		)
-	)
-	(symbol
+	)	(symbol
 		(lib_id "Connector:Conn_01x03_Pin")
 		(at 250.19 101.6 0)
 		(mirror y)
@@ -7912,7 +7808,7 @@
 				)
 			)
 		)
-		(property "Value" "100k"
+		(property "Value" "68k"
 			(at 233.172 104.394 90)
 			(show_name no)
 			(do_not_autoplace no)

@@ -409,6 +409,52 @@ Documentation is complete. What remains is implementation and evidence:
    BOM line on the board, and the degradation this warned about is what the
    design has, deliberately.
 
+### The sensor changed to PNP — 2026-08-08
+
+The LJ18A3-8-Z/BX is out; **3RG4023-3AB00** is in, because there are units on
+the bench. It is **PNP** where the old one was NPN, and that single fact
+rewrites §4.4 from top to bottom: an NPN sits high when inactive and pulls
+low; a PNP is open when inactive and drives high. Normal becomes the *lowest*
+reading instead of the highest.
+
+Worth recording what this did to the two things the star decision below was
+agonised over.
+
+**The fault band did not survive, and could not have.** With a PNP
+normally-open output, *inactive*, *cable open* and *shorted to 0 V* are the
+same electrical condition — nothing sourcing. There is no clever value choice
+that separates them, because there is no current to measure. So the ladder
+went from four states to three, and bit 4 now means *both active* and nothing
+else.
+
+But note what actually changed about the failure, because it is easy to
+over-read as a regression. Both before and after, **an open sensor cable is
+undetected** — that was already true from the moment the star put the summing
+resistors on the board. What flipped is the *direction*: the NPN reported a
+**false stop** (337 counts, inside the one-active band), the PNP reports a
+**missed stop** (~0, inside normal). Which is worse depends on the controller.
+A false stop makes a master believe the window reached its limit; a missed
+stop makes it believe the window never did. Neither is flagged. The honest
+summary is that the undetected failure moved, it did not appear.
+
+**The temperature ceiling closed, and that is the real prize.** +65 °C was the
+LJ18A3's, it was NFR-ENV01's limit, and it was *the one requirement this
+design knowingly failed* against the greenhouse study. The new part runs to
++85 °C. The old §6 entry said the answer would be "a wider-range end switch";
+it arrived as a change of part rather than as the temperature survey we
+expected to have to do. Worth noticing how cheaply a documented gap closed
+once the constraint was named and attached to a specific part — the entry
+existed precisely so that anyone touching the BOM would see it.
+
+**One number is now doing all the work.** The ≤2.5 V output drop is a 300 mA
+specification and this network draws 290 µA. If the drop is small, the bands
+have 63 counts of margin; if it is really 2.5 V, they have 23. Nothing in the
+datasheet distinguishes those, so it goes on the bench with the units already
+there — replacing the LJ18A3 internal-pull-up measurement that the change made
+moot.
+
+---
+
 ### The installation is a star — decision, 2026-08-07
 
 The PCB is the hub; the draw-wire and **each** end switch run their own cable

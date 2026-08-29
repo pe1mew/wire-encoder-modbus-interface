@@ -230,6 +230,57 @@ that also monitors its own cable.
   measurement is no longer ratiometric, and both-active vs cable-fault are
   only just distinguishable — both are bit-4 faults, so treat them as one.
   `regs.c`'s classifier and thresholds updated to match.
+- **End switch changed to the 3RG4023-3AB00, and it inverts the whole
+  interface** (2026-08-08, `documentation/6561.pdf`). The LJ18A3-8-Z/BX was
+  **NPN** with an internal 10 kΩ pull-up, so an inactive sensor sat *high*.
+  This one is **PNP**: inactive is *open*, operated drives *high*. Every level
+  in §4.4 inverts, and so do the firmware thresholds — **normal is now the
+  lowest reading and a fault the highest.**
+
+  Circuit: **R10 (470 k pull-up) is deleted** — it held *both active* off the
+  floor when the NPN outputs pulled down, and against a PNP source it only
+  injects an offset into a network that now needs a pull-down. The existing
+  10 k + 4k7 attenuator *is* that pull-down, so no part replaces it. **R8/R9
+  100 k → 68 k**, sized so *both active* does not clip at +15 % supply while
+  keeping the 10 µA off-state leakage clear of the *one active* band. Bands at
+  24 V: **29 / 423 / 719 counts**, thresholds 230 and 510.
+
+  **The fault band is gone, and that is inherent rather than an oversight.** A
+  PNP normally-open output sources nothing when inactive, when its cable is
+  open, and when its signal is shorted to 0 V — all three read ~0 counts.
+  Status bit 4 and FR-E16 now cover *both active* and nothing else. Note this
+  inverts the *direction* of the undetected failure rather than removing it:
+  under the NPN part an open cable read 337 counts and reported a **false**
+  stop; now it reads ~0 and reports a **missed** one. `regs.c` loses
+  `SW_CABLE_FAULT` entirely and classifies three states, not four.
+
+  **What it buys is bigger than what it costs.** The LJ18A3's +65 °C ceiling
+  was NFR-ENV01's limit and **the one requirement this design knowingly failed**
+  against the greenhouse study — NF-WP03 asks +70 °C. At **−25…+85 °C** the new
+  sensor stops being the constraint, NFR-ENV01 goes to **+70 °C**, and NF-WP03
+  moves into the met column. The old §6 entry predicted the fix would be "a
+  wider-range end switch"; it arrived as a change of part rather than as a
+  survey. Also gained: reverse-voltage, wire-breakage, inductive-overvoltage,
+  short-circuit and overload protection all built in, switch-on pulse
+  suppression, and an **M12 connector** in place of a 1.1 m flying lead — which
+  turns the field joint from a workmanship item into a cordset.
+
+  Two things to watch, both now in §6. The **≤2.5 V output drop is specified at
+  the rated 300 mA** and this network draws **290 µA**; the real drop should be
+  a fraction of a volt, but nothing guarantees it, and the difference is 23
+  counts of margin against 63 — so measuring `Von` at the divider's actual load
+  replaces the LJ18A3 bench item as the blocker. And **hysteresis is as low as
+  0.04 mm**, twenty times tighter than before, which makes FR-E15's 20 ms
+  debounce load-bearing rather than precautionary.
+
+- **D3 selected: PESD5V0S1BA**, 5 V standoff, bidirectional, SOD-323. The
+  standoff is deliberately *not* 3.3 V: the wiper swings to 3.3 V, so a
+  3.3 V-standoff part would sit at 100 % of its rated working voltage at full
+  scale, where leakage is largest and most temperature-dependent. Every
+  component on the schematic now carries a footprint. What remains is evidence
+  — datasheets quote reverse current at `V_RWM` and 25 °C, which says little
+  about 3.3 V at +70 °C, so FR-E21's fit/unfit measurement still has to be made.
+
 - **The wiper had no protection at all, and now does** (2026-08-07,
   FR-E21). PA2 ran bare from the terminal block to the MCU — no series
   element, no clamp — while the switch input two pins away had a 10 k series,

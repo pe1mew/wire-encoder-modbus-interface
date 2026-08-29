@@ -63,36 +63,47 @@ trustworthy as the calibration behind it. A wire that has been re-strung or a
 drum that has slipped will report a confident, plausible, wrong number. The
 switches are a second, independent opinion.
 
-They are **inductive proximity switches** (LJ18A3-8-Z/BX), not mechanical
+They are **inductive proximity switches** (3RG4023-3AB00), not mechanical
 contacts: an M18 barrel that detects a steel target within 8 mm, powered from
 the same 24 V that feeds the device. Nothing touches, so nothing wears, and
 the generous sensing range tolerates a window frame that shifts and settles
-over the years. Each has a red LED at the sensor itself, which makes
-commissioning possible without a meter — and each needs a **ferrous target**
-at its end stop, so a non-steel frame means adding target plates.
+over the years. Each has an LED at the sensor itself, which makes
+commissioning possible without a meter, and terminates in an **M12 connector**
+so the run back to the device is a cordset rather than a field splice. Each
+needs a **ferrous target** at its end stop — mild steel, 24 × 24 × 1 mm or
+better — so an aluminium or stainless frame means adding target plates.
 
-Both switches share a single connection to the device through a **resistor
-ladder**, with an end-of-line resistor fitted at the far end of the switch
-cable. This means the device does not simply see "a switch is closed" — it
-sees which of five distinct electrical states the loop is in:
+Each switch runs its own cable back to the device, and the two are summed
+there onto a single analog input. The device therefore does not simply see "a
+switch is closed" — it sees which of three levels the summed signal is at:
 
 | What the device sees | What it means |
 |---|---|
-| Loop reads as open circuit | The switch cable is cut, disconnected, or the end-of-line resistor is missing |
-| Quiescent level | Healthy loop; the window is between its stops |
-| One switch level | The window is at an end stop |
-| Both-switches level | Both switches closed at once — impossible on a working installation, so a wiring fault |
-| Loop reads as short circuit | The switch cable is shorted |
-
-So a **cut cable is distinguishable from a switch operating** — which a plain
-on/off input cannot do, and which matters when the sensor is on a roof.
+| Quiescent level | Neither switch operated; the window is between its stops |
+| One-switch level | The window is at an end stop |
+| Both-switches level | Both operated at once — impossible on a working installation, so a wiring or mounting fault |
 
 The device deliberately does **not** report *which* of the two switches
-closed. It does not need to: the master already knows the measured opening,
-so it knows which end the window is at. That resolution is spent on
-supervising the cable instead, which is the more useful thing to know. (The
-reasoning, including why a two-switch ladder cannot do both well, is in
-`design/scratchBook.md`.)
+operated. It does not need to: the master already knows the measured opening,
+so it knows which end the window is at. (The reasoning, including why one
+analog input cannot resolve both *which* switch and the state of the cable, is
+in `design/scratchBook.md`.)
+
+**What it cannot tell you, and this is worth reading before relying on the
+switches.** A cut switch cable is **not** detectable. The proximity sensors
+source current when they operate and nothing at all when they do not, so "no
+switch operated", "cable cut" and "cable shorted to 0 V" are the same
+electrical condition. A severed cable therefore reads as *no stop reached* —
+the window may be at its limit and the device will not say so. Only the
+both-switches-at-once fault is flagged.
+
+An earlier revision of this design did supervise the cable, by summing the two
+switches in a junction box at the window with an end-of-line resistor. That
+was given up when the installation became a star — one cable per sensor back
+to the device — and the trade is recorded in `design/TDS.md` §4.4. If cable
+integrity matters for your installation, the defence is the same one that
+covers a slipped draw-wire: compare commanded movement against measured
+movement in the controller.
 
 ## 3. What it reports
 

@@ -4,7 +4,7 @@
 |--------------|-------------------------------------------|
 | Document     | Technical Design Specification            |
 | Project      | `wire-encoder-modbus-interface` (DUT firmware) |
-| Version      | 0.5 (draft — §2 Modbus contract inherited and proven; §2.7/§2.8 register map new; §3 lifecycle inherited + new FR-E measurement series. v0.5 adds the FR-E17 maximum-age contract, FR-E18 end-stop capture, FR-E19 commanded teach and FR-E20 percentage register, makes the movement rate signed, and settles the enclosure at IP65; v0.4 made the opening scaling direction-agnostic; v0.3 made the end switches mandatory on a supervised ADC ladder) |
+| Version      | 0.6 (draft — §2 Modbus contract inherited and proven; §2.7/§2.8 register map new; §3 lifecycle inherited + new FR-E measurement series. **v0.6 changes the end switch to the 3RG4023-3AB00, which is PNP where the previous part was NPN — every §4.4 band inverts, the fault band is gone, and NFR-ENV01's ceiling rises to +70 °C.** v0.5 added FR-E17…FR-E20, the signed movement rate and the IP65 enclosure; v0.4 made the opening scaling direction-agnostic) |
 | Date         | 2026-07-28                                |
 | Status       | **Draft.** The Modbus half of this document is settled — it is the sibling project's verified contract. The measurement half (§2.7/§2.8 semantics, §3.3–§3.5, §4) is a first draft written before any hardware exists, and is expected to move. Open items in §6. |
 | Related docs | `design/description.md` (the same behaviour in prose, for integrators and installers); `design/scratchBook.md` (working notes and the reasoning behind the choices); sibling [`windmeters-modbus-interface`](https://github.com/pe1mew/windmeters-modbus-interface) `design/TDS.md` v0.9 — the source of §2, §3.1/§3.2, §5 and their bench evidence |
@@ -309,10 +309,10 @@ resistor values; the derivation is in `design/scratchBook.md`.
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-E20 | Should | Input register 30015 shall report the window opening as a percentage of the configured full travel, in units of 0.1 % (0–1000), derived from the *instantaneous* opening (30001) so that it tracks the same value a positioning loop reads. It shall be computed as `(30001 − 40001) × 1000 / 40004`, clamped to 1000, and shall carry the FR-E07 fault sentinel 65535 whenever 30001 does. | With the window at the calibrated closed point 30015 reads 0; at full travel it reads 1000; at the midpoint 500 ±1. Halving 40004 doubles the reported percentage for the same physical position. Disconnecting the wiper drives it to 65535 alongside 30001. |
-| FR-E21 | Must | The wiper input shall survive a **sustained** short of any J4 field conductor to the +24 V rail, indefinitely and without damage, while keeping the current injected into PA2 within the CH32V003's **±4 mA** absolute maximum (datasheet §3.2). This is met by a **10 kΩ series element** (R11), which limits the fault to **2.4 mA** at 27.6 V — 24 V passive PoE at +15 % — with the MCU's own clamp conducting at ≈3.9 V. A **bidirectional TVS to GND** (D3) and a **1 nF reservoir capacitor** (C6) sit on the protected side of R11. Any clamp fitted to this node shall leak **≤100 nA at 3.3 V across the whole NFR-ENV01 range**; §4.6's ≥10 MΩ wiper-node rule applies here and is what disqualifies the obvious candidates (§4.6). Note the resistor, not the TVS, is the current limiter: a TVS is a transient device and cannot hold a low-impedance 24 V short. | Apply +27.6 V to each J4 pin in turn for 60 s. The device reports status bit 2 (FR-E07) during, and after removal meets FR-E03 unchanged. Measure the mid-scale raw code with D3 fitted and unfitted at both NFR-ENV01 extremes: the difference shall be ≤1 count. |
-| FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the four states of the §4.4 band table: normal, one sensor active, both active, cable fault. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". The bands tile the whole range, and the lowest band is the fault — so an input shorted to 0 V, or one never connected, classifies as a fault rather than as a healthy loop. **An open sensor cable does not**: in the star topology it lands at 337 counts and is decoded as "one sensor active" (§4.4.3). | At each of the four nominal divider values the classification matches the table and status bit 3 follows. Shorting the input at the board reads 0 counts and sets status bit 4. Disconnecting one sensor cable reads ≈337 and sets bit 3 — the known limit, not a defect. |
+| FR-E21 | Must | The wiper input shall survive a **sustained** short of any J4 field conductor to the +24 V rail, indefinitely and without damage, while keeping the current injected into PA2 within the CH32V003's **±4 mA** absolute maximum (datasheet §3.2). This is met by a **10 kΩ series element** (R11), which limits the fault to **2.4 mA** at 27.6 V — 24 V passive PoE at +15 % — with the MCU's own clamp conducting at ≈3.9 V. A **bidirectional TVS to GND** (D3, **PESD5V0S1BA**, SOD-323) and a **1 nF reservoir capacitor** (C6) sit on the protected side of R11. The clamp shall have a standoff of **≥5 V** and leak **≤100 nA at 3.3 V across the whole NFR-ENV01 range**; §4.6's ≥10 MΩ wiper-node rule applies here and is what disqualifies the obvious candidates (§4.6.1). **The standoff figure is not a rounding of 3.3 V:** the wiper swings to 3.3 V, so a 3.3 V-standoff part would sit at 100 % of its rated working voltage at full scale, which is exactly where leakage is largest and most temperature-dependent. A 5 V part is well below its knee across the whole measurement range. Note the resistor, not the TVS, is the current limiter: a TVS is a transient device and cannot hold a low-impedance 24 V short. | Apply +27.6 V to each J4 pin in turn for 60 s. The device reports status bit 2 (FR-E07) during, and after removal meets FR-E03 unchanged. Measure the mid-scale raw code with D3 fitted and unfitted at both NFR-ENV01 extremes: the difference shall be ≤1 count. |
+| FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the three states of the §4.4.3 band table: neither active, one sensor active, both active. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". **Inverted 2026-08-08 with the PNP sensor:** *neither active* is now the **lowest** band and *both active* the highest, so there are **three** states, not four. Zero counts is a healthy reading. Status bit 3 shall be set while the classification is "one sensor active". | At each of the three nominal divider values the classification matches the table and status bit 3 follows. Disconnecting one sensor cable reads ~0 counts and classifies as *neither active* — the known limit (§4.4.5), not a defect. |
 | FR-E15 | Must | The classified switch state shall be debounced in firmware: a change shall be published only after the new state has been observed continuously for ≥20 ms. Sampling and debouncing shall never gate, delay or suppress the FR-MB20 response timing, the measurement path, or the FR-S20 watchdog feed. | Inject a 5 ms bounce burst: bit 3 changes exactly once, with no intermediate toggling visible to a master polling at 50 ms. The FR-MB21 latency histogram matches one taken with the switch input idle, within 2 ms. |
-| FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. **Scope, narrowed 2026-08-07 with the star topology:** bit 4 covers a signal shorted to 0 V and both switches active at once. It does **not** cover an open conductor in a sensor cable, which is indistinguishable from a genuine stop (§4.4.3) — the device cannot detect that condition and must not be documented as if it can. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Short the switch input: bit 4 sets within 200 ms, bit 3 clears, and 30001 continues to track the window unchanged. Close both switches at once: same. Restore: bit 4 clears within 200 ms. **Negative test:** disconnect one sensor cable — bit 4 stays clear and bit 3 sets, confirming the documented limit rather than contradicting it. |
+| FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. **Scope, narrowed again 2026-08-08 with the PNP sensor:** bit 4 now covers **both switches active at once, and nothing else.** A PNP normally-open output sources nothing when inactive, when its cable is open, and when its signal is shorted to 0 V, so all three read ~0 counts and are indistinguishable (§4.4.5). The device cannot detect an open or shorted sensor cable and must not be documented as if it can. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Operate both switches at once: bit 4 sets within 200 ms, and 30001 continues to track the window unchanged. Restore: bit 4 clears within 200 ms. **Two negative tests, both confirming documented limits rather than contradicting them:** disconnect one sensor cable — bit 4 stays clear, bit 3 stays clear, and the device reports no stop; short the switch input to 0 V — the same. |
 | FR-E18 | Should | On every debounced transition into "one sensor active" (FR-E14), the firmware shall capture the current raw wiper code and publish it to **30013** if that stop is the closed end or **30014** if it is the open end, deciding which by the **direction of the last movement** (FR-E10): a window
 that was opening has reached the open end, one that was closing has reached the
 closed end. Where no direction is known — no movement since reset — it shall
@@ -333,7 +333,7 @@ fall back to whichever of 40005/40006 the captured code lies nearer. Both regist
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
 | FR-S32 | Must | Input register 30007 shall identify the device: high byte = build type (0x01), fixed at compile time, independent of PC4; low byte = firmware version, incremented per release. | FC04 read returns 0x01vv. The value is identical with jumper open/bridged. The version byte matches the release records for the flashed binary. |
-| FR-S33 | Must | Input register 30006 shall report status flags — this row is the single normative bitfield definition: bit 0 = no completed measurement window since reset or since the last 40002 write (FR-S23/FR-S30); bit 1 = averaging accumulator not yet filled since reset or since the last 40002/40003/40004/40005/40006 write (FR-S23/FR-S30/FR-E05); bit 2 = wiper fault (FR-E07); bit 3 = end of travel reached (FR-E14); bit 4 = end-switch loop fault (FR-E16); bit 5 = teach in progress (FR-E19); bits 6–15 = 0. Bits 2 and 4 report two independent front-ends and may be set in any combination. | At power-on bits 0 and 1 are set; bit 0 clears after the first window, bit 1 after one full averaging window; both re-assert after a 40002 write per FR-S30's criterion. Disconnecting the wiper sets bit 2 (FR-E07) and leaves bit 4 clear. Shorting the switch input sets bit 4 (FR-E16) and leaves bit 2 clear; disconnecting a sensor cable sets bit 3, not bit 4 — the FR-E16 limit. |
+| FR-S33 | Must | Input register 30006 shall report status flags — this row is the single normative bitfield definition: bit 0 = no completed measurement window since reset or since the last 40002 write (FR-S23/FR-S30); bit 1 = averaging accumulator not yet filled since reset or since the last 40002/40003/40004/40005/40006 write (FR-S23/FR-S30/FR-E05); bit 2 = wiper fault (FR-E07); bit 3 = end of travel reached (FR-E14); bit 4 = end-switch loop fault (FR-E16); bit 5 = teach in progress (FR-E19); bits 6–15 = 0. Bits 2 and 4 report two independent front-ends and may be set in any combination. | At power-on bits 0 and 1 are set; bit 0 clears after the first window, bit 1 after one full averaging window; both re-assert after a 40002 write per FR-S30's criterion. Disconnecting the wiper sets bit 2 (FR-E07) and leaves bit 4 clear. Operating both end switches at once sets bit 4 (FR-E16) and leaves bit 2 clear; disconnecting a sensor cable, or shorting the switch input to 0 V, sets neither bit 3 nor bit 4 — the FR-E16 limit. |
 | FR-S34 | Must | Input register 30008 shall report whole seconds since the last reset, starting at 0 and saturating at 65535, allowing the master to detect restarts (value went backwards). | A read shortly after power-on returns a low value; a later read has incremented consistently with FR-S17 timing accuracy; a watchdog reset via the test hook returns the register to 0. |
 | FR-S35 | Should | Input registers 30009 and 30010 shall count, respectively, every frame discarded for invalid CRC-16 (regardless of address) and every request for which a normal or exception response was transmitted. Both reset to 0 at power-on and wrap at 65535. | After a power cycle both read 0. 100 valid FC04 requests increment 30010 by exactly 100 and leave 30009 unchanged. 20 corrupted-CRC frames increment 30009 by exactly 20 and 30010 by 0. |
 | FR-S36 | Should | Input register 30011 shall report elapsed whole seconds since the last *valid* sensor reading — initialised to 0 at reset and counting up until the first valid reading — clamped at 65535 and reset to 0 on each valid reading. It is the plausibility-check companion to the FR-E07 fault flag: a rising 30011 with status bit 2 clear means readings have stopped arriving without the fault detector having tripped yet. | Disconnect the sensor: the register increments 1/s (±2%). Reconnect: the next read returns ≤1. |
@@ -441,186 +441,188 @@ resistor or a clamp. Neither of those breaks ratiometric behaviour. The
 sibling board's decision not to filter was about bandwidth; it was never an
 argument for leaving the pin unprotected.
 
-### 4.4 End-switch interface — attenuating divider (redesigned 2026-07-29)
+### 4.4 End-switch interface — summing divider (PNP, 2026-08-08)
 
-**Sensor: LJ18A3-8-Z/BX** inductive proximity switch
-(`documentation/Proximity-Switch-LJ18A3-8-Z-BX.pdf`,
-`documentation/LJ_en.pdf`). As specified:
+**Sensor: 3RG4023-3AB00** inductive proximity switch, Pepperl+Fuchs
+(`documentation/6561.pdf`). As specified:
 
 | Parameter | Value |
 |---|---|
-| Supply | 6–36 V DC, 12–24 V nominal |
-| Consumption | <13 mA each |
-| Output | NPN normally-open, **with an internal 10 kΩ pull-up to +V** |
-| Sensing | 8 mm ±10 %, set distance 0–7 mm, hysteresis <10 % (≈0.8 mm) |
-| Target | Magnetic (ferrous) metal, 30 × 30 × 1 mm reference |
-| Response | 500 Hz |
-| Protection | Reverse connection, surge absorption, load short-circuit |
-| Ambient | **−30 … +65 °C** — sets NFR-ENV01's ceiling |
-| Body | M18×1 nickel-plated brass, 68 mm, Ø29 flange, ABS face, red LED |
-| Cable | **1.1 m** flying lead: brown +V, blue 0 V, black output |
+| Output | **3-wire DC PNP, normally open** |
+| Supply | 10–65 V DC, 24 V rated; no-load current 10 mA |
+| Rated output current | 300 mA; short-circuit and overload protection built in |
+| **Output voltage drop** | **≤2.5 V** — *specified at 300 mA*; see §4.4.4 |
+| **Off-state current** | **0.01 mA** — sets the floor of the *normal* band |
+| Sensing | 8 mm rated, 7.2–8.8 mm effective, 6.48 mm assured |
+| Hysteresis | **0.04 … 1.76 mm** |
+| Target | Mild steel St 37, 24 × 24 × 1 mm reference |
+| Repeatability | 0.2 mm |
+| Response | 300 Hz; 40 ms ready-delay from power-up |
+| Protection | Reverse voltage, wire breakage, inductive overvoltage, switch-on pulse suppression — all built in |
+| Ambient | **−25 … +85 °C** — no longer sets NFR-ENV01's ceiling |
+| Ingress | IP67 |
+| Body | M18 brass, non-embeddable, switching-state LED |
+| Termination | **M12 connector**: pin 1 = L+, pin 3 = L−, pin 4 = output |
 
-> ⚠️ **/BX is NPN; /BY is PNP.** A PNP part sources its supply rail through
-> the output transistor and would destroy PC4 outright.
-> `14_PROXIMITY_INDUCTIVE_18BY.pdf` in `documentation/` is the /BY datasheet —
-> check the marking on the sensor, not the paperwork that came with it.
+> ⚠️ **-3AB00 is NO; -3AA00 is NC.** The same datasheet covers both, and they
+> are one character apart in the order code. Fitting an NC part to this network
+> inverts every band in §4.4.3 without any other visible symptom — *normal*
+> would read as *both active*. Check the label on the sensor, not the box.
 
-#### 4.4.1 Why this is a divider and not a pull-up
+#### 4.4.1 Why the polarity change rewrites this section
 
-`LJ_en.pdf` p. 2 shows the output is **not a bare open collector**: an internal
-10 kΩ resistor ties it to +V. Powered at 24 V, an inactive sensor therefore
-*sources* current at 24 V rather than floating, and the earlier design — which
-assumed it floated and pulled the line up to 3.3 V itself — would have sat at
-10.4 V on the ADC pin with one sensor inactive and 14.0 V with both. That is a
-destroy-the-part error.
+The previous sensor (LJ18A3-8-Z/BX) was **NPN** with an internal 10 kΩ pull-up,
+so an inactive sensor sat *high* and an operated one pulled *low*. This one is
+**PNP**: the output transistor sources from +V, so an inactive sensor is *open*
+and an operated one drives *high*. Every level in this section is therefore
+inverted relative to every previous revision, and so are the firmware
+thresholds.
 
-The sensor already delivers a clean 0 ↔ 24 V signal behind a known impedance.
-What the board needs is therefore **attenuation and clamping, not excitation**.
+Two consequences follow immediately, and neither is cosmetic:
+
+- **The board must supply the pull-down.** A PNP output needs a load to 0 V to
+  define its inactive state; there is no internal element doing it. The
+  existing 10 k + 4k7 attenuator already is that load, which is why no new part
+  is needed for it.
+- **The 470 k pull-up (R10) must come out.** It was there to hold *both active*
+  off the floor when the NPN outputs pulled down. Against a PNP output it does
+  nothing but inject a constant offset into a network that now needs a
+  pull-down.
+
+The lesson from the LJ18A3 stands and is worth restating: **read the output
+structure in the datasheet, not the part description.** That sensor's internal
+pull-up was the difference between a working divider and 14 V on a 3.3 V pin,
+and it appeared on page 2 of a document nobody would have opened if the words
+"open collector" had been believed.
 
 #### 4.4.2 The network
 
-**The installation is a star: the PCB is the hub, and the draw-wire and each
-end switch run their own cable back to it** (decided 2026-08-07). There is no
-field junction, so summing happens **on the board**. This is a change of
-topology, not of values — the four band levels below are unaltered — but it
-costs the cable supervision, which §4.4.4 and §4.4.6 now state honestly.
+The installation is a **star**: the PCB is the hub, and the draw-wire and each
+end switch run their own cable back to it. There is no field junction, so
+summing happens on the board.
 
 ```
-   +24V ──────┬────────────────────────────────────► +V to both sensors
-              │                          |
-           [ 470k ]                      |    star: three separate runs
-              │                          |
-   OUT A ─[ 100k ]─┐                     |    ── end switch A   (own cable)
-                   ├── sum ──[ 10k ]──┬──┼─── PC4 (ADC ch2)
-   OUT B ─[ 100k ]─┘                  │  |    ── end switch B   (own cable)
-                                    [ 4k7 ]
-   0 V ─────────────────────────────────┴──── GND
-                                          │
-                                     clamp to 3V3 + GND
+   +24V ──────────────────────────────────────────► +V to both sensors
+                                         |
+   OUT A ─[ 68k ]─┐                      |   star: three separate runs
+                  ├── sum ──[ 10k ]──┬───┼──── PC4 (ADC ch2)
+   OUT B ─[ 68k ]─┘                  │   |
+                                  [ 4k7 ]    ── end switch A  (own cable)
+   0 V ────────────────────────────────┴───    ── end switch B  (own cable)
+                                        │
+                                   clamp to 3V3 + GND
 ```
 
-- **470 k from +24 V.** It is no longer an end-of-line element — on the board
-  it supervises nothing. It earns its place for a different reason: it is what
-  holds *both active* at 56 counts instead of collapsing it onto *cable
-  shorted* at 0. Without it those two states become one. Feeding it from 3V3
-  instead would drop *both active* to 8 counts, inside the fault band, so it
-  stays on the 24 V rail.
-- **100 k per sensor output.** Large deliberately — see §4.4.4. In a star they
-  have nowhere to be except the PCB, which is what removes the supervision.
-- **10 k series + 4k7 to ground** at the board attenuate by 0.32 and limit the
-  clamp current if the signal conductor ever shorts to +V (7.7 V at the
-  divider, ≈2 mA into the clamp — survivable indefinitely).
-- **A clamp to 3V3 and GND** is not optional. It is the only thing standing
-  between a field wiring error and a dead MCU.
+- **68 k per sensor output (R8, R9).** Sized in §4.4.4: large enough that
+  *both active* does not clip at +15 % supply, small enough that the 10 µA
+  off-state leakage stays well clear of the *one active* band.
+- **10 k series + 4k7 to ground (R6, R5).** Unchanged. They attenuate by 0.32,
+  provide the pull-down the PNP outputs need, and limit the clamp current to
+  ≈2 mA if a sensor output is ever shorted straight onto the summing node.
+- **No pull-up.** R10 is deleted.
+- **A clamp to 3V3 and GND (D2)** is not optional. It is the only thing
+  standing between a field wiring error and a dead MCU.
+
+Load current at 24 V is **290 µA** — three orders below the sensor's 300 mA
+rating, which is the basis for the drop argument in §4.4.4.
 
 #### 4.4.3 Bands (provisional — see §6)
 
-| State | Node | Counts | Status (FR-S33) |
-|---|---|---|---|
-| Normal — between the stops | 1.76 V | **547** | — |
-| One sensor active — at a stop | 0.97 V | **299** | bit 3 |
-| Both active — wiring fault | 0.18 V | **56** | bit 4 |
-| Signal shorted to 0 V | 0 V | **0** | bit 4 |
-| *One sensor cable open* | *3.40 V* | *337* | *decoded as **one active** — see below* |
+Nominal 24 V, output drop taken as negligible at 290 µA:
 
-Decision thresholds: **≥420** normal, **≥150** one active, **≥25** both
-active, **<25** cable fault.
+| State | Node | PC4 | Counts | Status (FR-S33) |
+|---|---|---|---|---|
+| Neither active — between the stops | 0.29 V | 0.09 V | **29** | — |
+| One sensor active — at a stop | 4.27 V | 1.36 V | **423** | bit 3 |
+| Both active — wiring or mounting fault | 7.24 V | 2.32 V | **719** | bit 4 |
 
-**The last row is the cost of the star.** With the 100 k on the board, an open
-sensor cable simply removes that branch's pull-up, and "removed" sits between
-"inactive" and "active" — 337 counts, 38 counts from a genuine stop at 299 and
-squarely inside the same band. So a cut reports a **false end of travel**,
-which is worse than a detected fault because the controller acts on it.
+Decision thresholds: **<230** neither, **≥230** one active, **≥510** both
+active.
 
-This cannot be tuned out. §4.4.4 needs ≥45 counts of margin just to absorb the
-±15 % supply tolerance, and a fifth state does not fit between four bands on a
-single 10-bit input. It is the same wall `design/scratchBook.md` hit when it
-proved the ladder can resolve *which* switch or *both closed*, but not both:
-the pin is out of resolution, not the values out of tune.
+**The ordering is inverted** relative to every previous revision of this
+document: with a PNP output, *normal is the lowest reading* and a fault is the
+highest. Zero counts is now a healthy state, not a fault — which is what
+removes the fault band entirely (§4.4.5).
 
-Note the ordering is **inverted** relative to the earlier pull-up design:
-healthy is now the *highest* reading and a dead cable is *zero*.
+#### 4.4.4 Margins, and the one measurement they depend on
 
-#### 4.4.4 Three properties worth keeping
+**Supply tolerance and output drop.** The two together set the spread. At
+±15 % on the 24 V rail:
 
-**Fail-safe against a short, not against an open.** The 4k7 sits on the board,
-so a signal node shorted to 0 V, or an unpopulated input, reads 0 and
-classifies as a fault. Nothing floats at the ADC pin. But in the star topology
-an open *sensor cable* does not reach the pin at all — it leaves that branch's
-100 k unterminated, and the node lands at 337 counts, inside the *one active*
-band. Read §4.4.3's last row before relying on this paragraph: the input is
-fail-safe, the harness is not.
-
-**Saturation voltage almost stops mattering.** The 100 k summing resistors swamp
-it. Where the previous topology shifted *one active* by **296 counts** at
-Vsat = 1.5 V — enough to mis-decode it as *normal* — this one shifts it by
-**17**:
-
-| `Vsat` | one active | both active |
+| | drop ≈ 0 | drop = 2.5 V (the datasheet maximum) |
 |---|---|---|
-| 0 V | 299 | 56 |
-| 0.5 V | 305 | 67 |
-| 1.5 V | 316 | 89 |
+| One active | 360 … 487 | 316 … 443 |
+| Both active | 611 … 827 | 536 … 752 |
 
-Measuring `Vsat` is still worth doing, but it is no longer make-or-break.
+Against the 510 threshold that leaves **23 counts** at the tightest point —
+*one active* at +15 % with no drop (487) against *both active* at −15 % with
+the full drop (536). That comparison is deliberately pessimistic: it pits two
+different supply voltages against each other, and no single unit sees both. At
+any **fixed** supply the separation is 176 counts or better; at 24 V it is 221.
 
-**Supply tolerance is absorbed.** At ±15 % on the 24 V rail: normal 465–629,
-one active 254–344, both active 48–65. No band reaches its neighbour's
-threshold, with ≥45 counts to spare at the tightest point.
+**The drop is the open question, and it is the new §6 blocker.** The ≤2.5 V
+figure is specified at the rated 300 mA. This network draws **290 µA**, where
+the drop across a saturated PNP output should be a small fraction of a volt —
+but the datasheet does not guarantee that, and if the real drop is large the
+23-count margin above is what absorbs it. **Measure `Von` at 290 µA before
+the board is laid out.** If it is under ~0.5 V, the thresholds can be widened
+and the margin becomes 63 counts.
 
-#### 4.4.5 What was given up
+**Off-state leakage sets the floor.** 0.01 mA per sensor gives 29 counts with
+both inactive. Leakage rises with temperature, and this part now runs to
++85 °C; even at **five times** the specified figure the *neither active* band
+reaches only 146 counts, 84 clear of the 230 threshold. Choosing 68 k rather
+than a larger value is what buys that: the signal-to-leakage ratio is `Von/Rs`
+against `I_leak`, so a smaller summing resistor improves it directly.
 
-**The measurement is no longer ratiometric.** The bands derive from the 24 V
-supply, not from the 3.3 V ADC reference, so supply variation moves them
-instead of cancelling. §4.4.4 shows the margins absorb ±15 %, which is ample
-for a passive-PoE feed — but it is a genuine regression against the wiper path,
-where the ratiometric trick makes supply drift disappear entirely. Do not
-casually narrow the bands later on the assumption that they are stable.
+**Hysteresis is twenty times tighter than before.** 0.04 mm at worst, against
+the LJ18A3's ≈0.8 mm. A sash that rocks at the stop can therefore chatter the
+output where the old sensor would have held, which is not a band problem but
+makes FR-E15's 20 ms debounce load-bearing rather than precautionary.
 
-Feeding the 470 k from the board's 3.3 V would not fix this: the sensor
-outputs still swing against the 24 V rail and dominate the sum, and the only
-effect would be to drop *both active* to 8 counts and lose it into the fault
-band. The bands are 24 V-referenced because the sensors are.
+#### 4.4.5 What is given up
 
-**Cable supervision — given up with the star (2026-08-07).** The 470 k was
-chosen as an end-of-line element, and an end-of-line element is only that if
-it sits at the end of the line. With the PCB as the hub of a star it sits at
-the near end, so it proves nothing about the harness. What is still detected:
-a signal shorted to 0 V, and both switches active at once. What is no longer
-detected: **any open conductor in either sensor cable**, which reports a false
-stop (§4.4.3). Status bit 4 and FR-E16 have been narrowed to match; the
-alternative — a junction box at the sensors, keeping the summing in the field
-— was considered and rejected in favour of the star's simpler installation.
+**There is no fault band at all.** This is the significant loss and it is
+inherent to a PNP normally-open output. *Inactive*, *cable open* and *signal
+shorted to 0 V* all read the same ~0 counts, because "no current being
+sourced" is what all three look like. Status bit 4 and FR-E16 now cover
+**both active** and nothing else.
 
-**Both-active and cable-fault are only just distinguishable** (56 vs 0 counts).
-Both set bit 4 and neither is separately actionable, so treat them as one
-condition; do not build anything on telling them apart.
+Note this inverts the *direction* of the undetected failure rather than
+removing it. Under the NPN part an open cable read 337 counts and reported a
+**false stop**; under this one it reads ~0 and reports a **missed stop**. The
+controller consequences differ — a false stop makes a master believe the window
+reached its limit, a missed stop makes it believe the window never did — but
+neither is detected, and no wording in this document should imply otherwise.
 
-**Losing the +V conductor alone is still undetected.** If the supply conductor
-breaks while 0 V and signal stay intact, both sensors go quiet and the 470 k
-end-of-line element keeps injecting — the loop reads *normal* for ever. The
-node drops only because the sensors stop sourcing, which is indistinguishable
-from a genuinely inactive pair. This is inherent to powering the sensors down
-the same cable and is recorded in §6.
+**The measurement is not ratiometric.** The bands derive from the 24 V supply,
+not from the 3.3 V ADC reference, so supply variation moves them instead of
+cancelling. §4.4.4 shows the margins absorb ±15 %, but this remains a genuine
+regression against the wiper path, where the ratiometric trick makes supply
+drift disappear entirely. Do not narrow the bands later on the assumption they
+are stable.
 
-#### 4.4.6 What the star does buy
+**Losing the +V conductor is undetected**, as before — the sensor goes quiet,
+which is indistinguishable from inactive.
 
-The trade is not one-way, and the gain is in the place §4.6 already taught us
-to look. In a field junction the 100 k and 470 k would sit uncoated in the
-least controlled part of the installation, and §4.6's own figures say
-contaminated films reach 100 kΩ–10 MΩ without difficulty. Against this
-network:
+#### 4.4.6 What the change buys
 
-| Leakage path in the junction | Value that breaks a band | Effect |
-|---|---|---|
-| signal → 0 V | **37 kΩ** | *normal* decodes as a stop — a false stop |
-| signal → +V | **182 kΩ** | *one active* decodes as normal — **a real stop is missed** |
+Three things, and the first is worth more than the fault band that was lost.
 
-The second is five times easier to reach, sits between two adjacent terminals,
-and fails in the direction where the window keeps driving. On the board, inside
-IP65 and under conformal coating, both numbers stop mattering. So the star
-moves a hidden failure out of the harness and puts a detectable-turned-hidden
-one in — it is a genuine trade, not a pure loss.
+**The temperature ceiling is released.** The LJ18A3's +65 °C limit was
+NFR-ENV01's ceiling and the single requirement this design knowingly failed
+against the greenhouse study (NF-WP03 asks +70 °C). At **+85 °C** this sensor
+stops being the constraint, the limit reverts to the electronics, and that gap
+closes. See `requirementsCompliance.md`.
+
+**Protection that was previously ours to provide.** Reverse voltage, wire
+breakage, inductive overvoltage, short-circuit and overload are all built in,
+and switch-on pulse suppression removes a class of false trigger at power-up
+that the 40 ms ready-delay would otherwise have exposed.
+
+**No internal pull-up to be surprised by**, and an **M12 connector** instead of
+a 1.1 m flying lead — so the field joint that §6 required to be sealed to the
+enclosure's standard becomes a cordset, and stops being a workmanship item.
 
 ### 4.5 Enclosure and field wiring (decided 2026-07-28)
 
@@ -711,7 +713,7 @@ obvious candidates:
 |---|---|---|
 | **BZX84-C3V3** — the clamp already used on PC4 | µA-scale well below breakdown, and **voltage-dependent** | ≈12 mV, ~4 counts, and **non-linear** — calibration cannot remove it |
 | **BAT54S** — the reflex ADC clamp | ~2 µA at 25 °C, roughly doubling per 10 °C → ≈32 µA at +65 °C | ≈80 mV, **25 counts, 2.4 % of full scale** against a sensor specified at 0.2 % |
-| **Low-leakage TVS, ≤100 nA** | ≤100 nA across the NFR-ENV01 range | ≤0.25 mV, <0.1 count — acceptable |
+| **PESD5V0S1BA** — 5 V standoff, bidirectional, SOD-323 (selected) | ≤100 nA required across the NFR-ENV01 range | ≤0.25 mV, <0.1 count — acceptable |
 
 The trap is that PC4 and PA2 sit at comparable impedance — 4.35 kΩ and 2.5 kΩ
 — so the PC4 clamp *looks* transferable. It is not, and the difference is not
@@ -720,8 +722,11 @@ of margin, PA2 is the 10-bit measurement the product exists to make. A part
 that is invisible on one is disqualifying on the other.
 
 **D3's part number is therefore a specification, not a preference**, and it is
-the one line of the BOM that must be chosen against a datasheet leakage figure
-rather than a package and a voltage.
+the one line of the BOM chosen against a datasheet leakage figure rather than a
+package and a voltage. Selected: **PESD5V0S1BA**, 5 V standoff, bidirectional,
+SOD-323 — with the leakage still to be confirmed on the bench, because most
+datasheets quote reverse current only at `V_RWM` and 25 °C, which says little
+about 3.3 V at +70 °C. FR-E21's verification is exactly that measurement.
 
 ---
 
@@ -731,7 +736,7 @@ rather than a package and a voltage.
 
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
-| NFR-ENV01 | Must | All §2 and §3 requirements shall be met over an ambient temperature range of **−25 °C to +65 °C**. The upper limit is set by the **LJ18A3-8-Z/BX end-switch sensor** (rated −30…+65 °C, §4.4), which is the narrowest part in the chain — not by the electronics, which inherit an industrial-grade part set good to +70 °C or beyond. Substituting a wider-range end switch is the only thing that would raise this figure. | In a climate chamber at both extremes: (a) 10,000 FC04 cycles at 9600 8N1 complete with zero framing/CRC errors; (b) the FR-S17 window measurement passes at its full-range tolerance; (c) the §4.4 switch bands decode correctly at both extremes, since the sensor's saturation voltage is itself temperature-dependent. |
+| NFR-ENV01 | Must | All §2 and §3 requirements shall be met over an ambient temperature range of **−25 °C to +70 °C** (**raised 2026-08-08**). The ceiling was previously +65 °C, set by the LJ18A3-8-Z/BX end switch. The **3RG4023-3AB00** that replaces it is rated **−25…+85 °C** (§4.4) and is no longer the narrowest part, so the limit reverts to the electronics — which the sibling project's part set carries to +70 °C. This meets the greenhouse study's NF-WP03 in full; see `requirementsCompliance.md`. The low end is now set by the sensor at −25 °C, comfortably below the −20 °C asked. | In a climate chamber at both extremes: (a) 10,000 FC04 cycles at 9600 8N1 complete with zero framing/CRC errors; (b) the FR-S17 window measurement passes at its full-range tolerance; (c) the §4.4 switch bands decode correctly at both extremes, since the sensor's saturation voltage is itself temperature-dependent. |
 | NFR-ENV02 | Must | The device shall operate in a **condensing** environment, up to 100 % relative humidity. Two measures are required and neither substitutes for the other: (a) a **pressure-equalisation vent** so the enclosure does not pump moist air and liquid water in through its seals as it cools (§4.5); (b) protection of the assembled board against the moisture films that will still form — conformal coating or an equivalent documented on the BOM — such that **surface leakage from the wiper node to any rail stays above 10 MΩ** under condensing conditions (§4.6). | Cycle the device through a condensing night in the installed enclosure — a temperature swing carrying the internal air below its dew point — while polling continuously: zero read failures, and the reported opening at a fixed sensor position moves by no more than the FR-E03 tolerance. Measure wiper-node-to-rail insulation resistance immediately after the cold soak, with condensate present: ≥10 MΩ. Inspect the glands and the vent for water ingress. |
 | NFR-ENV03 | Must | The enclosure shall be rated at least **IP65**, with every field cable entering through a gland sized to that cable and every connector and termination inside the enclosure (§4.5). The figure is set by the selected **Kopp 99966478** box (`hardware/Documentation/`), which is IP65; the electronics themselves impose no such limit. IP65 — protection against water jets — is the level the greenhouse study asks of hardware not mounted at the aperture, and this box holds only the electronics. | Inspection against the enclosure and gland datasheets; a spray test per the IP65 definition on a fully assembled and glanded unit, including the vent plug. |
 | NFR-ENV04 | Should | The device shall be mounted out of direct UV exposure (§4.5). Where that cannot be guaranteed for a given installation, the enclosure material shall be UV-stabilised. | Installation inspection. Where the mounting position is exposed, the enclosure datasheet shall state UV stabilisation. |
@@ -830,28 +835,43 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   introduced this; the dry-contact design did not have it. Now a sub-case of
   the item above rather than a separate problem.
 
-- **Sensor polarity is now fixed, but the target is not.** The LJ18A3-8-Z/BX
-  is normally-open, so §4.4's sense is settled. What is not settled is the
-  target: 8 mm assumes 30 × 30 × 1 mm of iron. Confirm the window frame is
-  ferrous and presents enough area at both stops, or add target plates to the
-  installation scope.
+- **The output drop at 290 µA is the blocking measurement** (§4.4.4), and it
+  replaces the LJ18A3 bench item that the sensor change retired. The
+  3RG4023-3AB00's ≤2.5 V drop is specified at its rated 300 mA; this network
+  draws three orders less, where the real drop should be a fraction of a volt
+  — but nothing guarantees it, and the difference is 23 counts of margin
+  against 63. Measure `Von` at the divider's actual load, hot and cold, before
+  the board is laid out. While the units are on the bench, confirm the 10 µA
+  off-state current at +85 °C too: it sets the floor of the *neither active*
+  band and the design assumes it stays under five times the specified figure.
 
-- **Temperature ceiling — DECIDED (2026-07-29): NFR-ENV01 narrowed to
-  +65 °C, set by the end-switch sensor.** The LJ18A3-8-Z/BX is rated
-  −30…+65 °C and is the narrowest part in the chain; the electronics would
-  have carried +70 °C. Rather than leave a requirement the bill of materials
-  cannot meet, the requirement now states the real limit and names what sets
-  it. *Residual:* this is 5 °C below the −20…+70 °C the greenhouse study asks
-  for (NF-WP03), and the sensor sits at the window frame — precisely where the
-  solar gain that motivated +70 °C occurs. If a survey shows the mounting
-  position can exceed 65 °C, the answer is a wider-range end switch, not a
-  change to this document. See `design/requirementsCompliance.md`.
+- **Sensor polarity is fixed, but the target is not.** The 3RG4023-3AB00 is
+  PNP normally-open, so §4.4's sense is settled. What is not settled is the
+  target: the 8 mm rating assumes mild steel St 37 at 24 × 24 × 1 mm. Confirm
+  the window frame is ferrous and presents enough area at both stops, or add
+  target plates to the installation scope. Note the reduction factors —
+  aluminium 0.40, stainless 0.70 — a non-ferrous frame roughly halves the
+  working distance.
 
-- **Cable length and joints** (§4.4). The 1.1 m flying lead will usually need
-  extending, once per sensor now that each has its own run to the hub. The
-  joint is no longer inside a supervised loop — nothing downstream will report
-  it if it corrodes open — so sealing it to the enclosure's standard matters
-  *more* than it did, not less, because the failure is now silent.
+- **Temperature ceiling — CLOSED (2026-08-08).** NFR-ENV01 was narrowed to
+  +65 °C on 2026-07-29 because the LJ18A3-8-Z/BX capped it there, and that was
+  recorded as the one requirement this design knowingly failed against the
+  greenhouse study. The 3RG4023-3AB00 is rated **−25…+85 °C**, so the sensor
+  stops being the constraint, NFR-ENV01 goes to **+70 °C**, and NF-WP03 is met
+  in full. The answer turned out to be "a wider-range end switch" exactly as
+  the old entry predicted — it simply arrived as a change of part rather than
+  as a survey. *Residual:* +70 °C is now an assertion about the **electronics**
+  and is inherited from the sibling project rather than measured here; it needs
+  the NFR-ENV01 chamber run to become evidence.
+
+- **Cable length and joints — much improved** (§4.4). The 3RG4023-3AB00
+  terminates in an **M12 connector**, so the run to the hub is a cordset of
+  the required length rather than a 1.1 m flying lead spliced in the field.
+  The workmanship item disappears; what replaces it is a procurement one —
+  specify cordset length and IP rating per sensor, and remember the connector
+  itself now sits outdoors on the frame, where the flying-lead joint used to
+  be the exposed part. Maximum cable length is 300 m, which is not a
+  constraint here.
 
 - **Enclosure and environment — CLOSED (v0.4, ingress figure settled v0.5).**
   IP65 box (Kopp 99966478), all connectors
@@ -864,10 +884,11 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   `kicad-cli` for ERC and netlist. **Wiper protection is CLOSED**: §4.3 and
   FR-E21 fit R11/C6/D3, replacing a bare run from the terminal block to PA2
   that had been inherited from the sibling board. Residual: the physical form
-  of the end-switch runs (§4.4), and **D3's part number**, which must be
-  selected against a datasheet leakage figure of ≤100 nA at 3.3 V over the
-  full NFR-ENV01 range (§4.6.1) — the schematic carries the symbol with the
-  footprint deliberately blank so it cannot be laid out unselected. Actuator
+  of the end-switch runs (§4.4). **D3 is now selected — PESD5V0S1BA**, 5 V
+  standoff, SOD-323 — and every component on the schematic carries a
+  footprint. What remains is evidence rather than choice: its leakage at
+  3.3 V and +70 °C is not something the datasheet answers, so FR-E21's
+  fit/unfit mid-scale measurement still has to be made. Actuator
   motor noise on the sensor cable has no precedent in the sibling project's
   bench work and is the most likely source of an installation surprise; R11
   and C6 now give it a 12.5 µs time constant to fight, which it did not have
@@ -914,11 +935,12 @@ Everything here is genuinely undecided. Items are removed (or kept with a
 
 ---
 
-*End of Technical Design Specification v0.5 (2026-07-29: FR-E17 maximum-age
-contract, FR-E18 end-stop capture, FR-E19 commanded teach, FR-E20 percentage
-register, signed movement rate, and the enclosure settled at IP65; v0.4
-direction-agnostic scaling with a minimum calibration span and the §4.5
-enclosure / NFR-ENV02…05 environmental requirements; v0.3 mandatory end
-switches on a supervised ADC ladder (PC4) with the address jumper on PC1;
+*End of Technical Design Specification v0.6 (2026-08-08: end switch changed to
+the 3RG4023-3AB00 — PNP, so §4.4's bands invert and the fault band is lost;
+R10 deleted and R8/R9 retuned to 68 k; FR-E14/FR-E16/FR-S33 narrowed to match;
+NFR-ENV01 raised to +70 °C, which closes NF-WP03. v0.5 added the FR-E17
+maximum-age contract, FR-E18/E19 teach, FR-E20 percentage, FR-E21 wiper
+protection and the IP65 enclosure; v0.4 direction-agnostic scaling; v0.3
+mandatory end switches on PC4 with the address jumper on PC1;
 §2/§3.1/§3.2/§5 inherited from `windmeters-modbus-interface` TDS v0.9,
 §2.7/§2.8 and the FR-E series new).*
