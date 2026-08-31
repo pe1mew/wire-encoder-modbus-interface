@@ -198,19 +198,25 @@ static persist_settings_t persisted;
  * relative to earlier revisions of this file: normal is now the LOWEST
  * reading and a fault the highest.
  *
- * MEASURED on silicon 2026-08-08 at Von = 24.04 V (three states, model
- * agreement <= 0.1 mV):
+ * MEASURED on silicon 2026-08-08 at Von = 23.82 V (three states, model
+ * agreement <= 1 mV; Von independently consistent to 0.6 % across all three):
  *
- *   neither active, between the stops   102   <  256
- *   one sensor active                   466   >= 256   -> end reached
- *   both active (wiring/mounting fault) 720   >= 574   -> fault
+ *   neither active, between the stops    96   <  251
+ *   one sensor active                   460   >= 251   -> end reached
+ *   both active (wiring/mounting fault) 713   >= 567   -> fault
  *
  * The output drop is ZERO at this network's 290 uA — the datasheet's <=2.5 V
- * is a 300 mA figure and does not apply. But the OFF-STATE LEAKAGE is 35 uA
- * per sensor, 3.5x the specified 10 uA, which lifts the floor from 29 counts
- * to 102 and adds 42 counts to "one active". That is why SW_TH_BOTH is 574
- * and not the 510 originally computed: at +15 % supply one-active reaches 536
- * and would otherwise decode as a false BOTH_ACTIVE fault.
+ * is a 300 mA figure and does not apply. But the OFF-STATE LEAKAGE is 33 uA
+ * per sensor, 3.3x the specified 10 uA, which lifts the floor from a computed
+ * 29 counts to 96 and adds 41 counts to "one active". That is why SW_TH_BOTH
+ * is 567 and not the 510 originally computed: at +15 % supply one-active
+ * reaches 529 and would otherwise decode as a false BOTH_ACTIVE fault.
+ *
+ * These figures replace a first set taken 2026-08-08 on a rig that still had
+ * R10 fitted and R5 floating. Both faults were found by the TP-A00 rig check
+ * and the numbers were re-taken; the leakage survived the correction almost
+ * unchanged (35 -> 33 uA), but nothing measured before the fix should be
+ * trusted.
  *
  * THERE IS NO FAULT BAND AT THE BOTTOM, and that is not an oversight. A PNP
  * normally-open output sources nothing when inactive, when its cable is open,
@@ -221,21 +227,21 @@ static persist_settings_t persisted;
  * not bugs to be fixed by moving a threshold.
  *
  * Margins across +/-15 % supply, worst case of both leakage models:
- *   neither <= 117 | one 396..536 | both >= 612
- * giving 139/140 counts either side of SW_TH_ONE and 38/38 either side of
+ *   neither <= 111 | one 391..529 | both >= 606
+ * giving 140/140 counts either side of SW_TH_ONE and 38/39 either side of
  * SW_TH_BOTH. The 38 is the tightest point in the design and it is set by the
  * supply tolerance assumption, not by the resistors — 68k is close to optimal
  * here, because a larger Rs improves the one/both ratio but worsens the
  * leakage floor, and a smaller one does the reverse.
  *
- * STILL OPEN (TDS §6): whether the 35 uA is an internal bleeder (~590k,
+ * STILL OPEN (TDS §6): whether the 33 uA is an internal bleeder (~625k,
  * temperature-stable) or junction leakage (doubles ~every 10 C). Both fit the
  * bench data identically at room temperature. Under the second, the floor
  * crosses SW_TH_ONE after only ~12 C of warming and the device reports stops
  * that are not there. Do not treat these thresholds as settled until a hot
  * reading says which. */
-#define SW_TH_ONE   256u
-#define SW_TH_BOTH  574u
+#define SW_TH_ONE   251u
+#define SW_TH_BOTH  567u
 
 typedef enum {
 	SW_NEITHER = 0,  /* between the stops — and also an open or shorted

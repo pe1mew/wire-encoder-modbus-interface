@@ -528,20 +528,26 @@ rating, which is the basis for the drop argument in §4.4.4.
 
 #### 4.4.3 Bands — MEASURED 2026-08-08
 
-Measured on the bench at a sensor supply of 24.04 V, with the model fitted to
-the readings agreeing to **≤0.1 mV on all three states**:
+Measured on the bench at `Von` = 23.82 V, with the model fitted to the
+readings agreeing to **≤1 mV on all three states**:
 
 | State | PC4 measured | Counts | Model | Status (FR-S33) |
 |---|---|---|---|---|
-| Neither active — between the stops | **0.329 V** | **102** | 102 | — |
-| One sensor active — at a stop | **1.502 V** | **466** | 466 | bit 3 |
-| Both active — wiring or mounting fault | **2.320 V** | **720** | 720 | bit 4 |
+| Neither active — between the stops | **0.310 V** | **96** | 96 | — |
+| One sensor active — at a stop | **1.481 V** | **460** | 460 | bit 3 |
+| Both active — wiring or mounting fault | **2.300 V** | **714** | 713 | bit 4 |
 
-(One active was measured separately per switch: OPEN 1.505 V, CLOSE 1.498 V.
-The 7 mV between them is resistor tolerance — see §4.4.5.)
+(One active was measured separately per switch: OPEN 1.477 V, CLOSE 1.485 V.
+The 8 mV between them is resistor tolerance — see §4.4.5.)
 
-Decision thresholds: **<256** neither, **≥256** one active, **≥574** both
+Decision thresholds: **<251** neither, **≥251** one active, **≥567** both
 active.
+
+> **These replace a first set taken the same day on a faulty rig.** That bench
+> still had **R10 fitted** and **R5 floating**, so it was neither the schematic
+> nor a divider. The TP-A00 rig check in [`testPlan.md`](testPlan.md) found
+> both. Nothing measured before the fix should be trusted — though the leakage
+> figure survived it almost unchanged, 35 → 33 µA.
 
 **The ordering is inverted** relative to every revision before 2026-08-08:
 with a PNP output, *normal is the lowest reading* and a fault the highest.
@@ -553,30 +559,29 @@ Two parameters were unknown when §4.4.2's values were chosen. Both are now
 measured, and they moved in opposite directions.
 
 **The output drop is zero — the §6 blocker is closed, favourably.** Fitting
-the readings gives `Von` = **24.04 V** against a 24.04 V supply, i.e. no
-measurable drop at this network's 290 µA. The datasheet's ≤2.5 V is a 300 mA
-figure and does not apply here, exactly as suspected. `Von` is confirmed twice
-over and independently: once from *one active* after correcting for leakage,
-and once from *both active*, which contains no leakage term at all and still
-lands on 24.04 V.
+the readings gives `Von` = **23.82 V**, no measurable drop at this network's
+290 µA. The datasheet's ≤2.5 V is a 300 mA figure and does not apply here,
+exactly as suspected. `Von` is confirmed **three** times independently — from
+each switch separately and from *both active*, which contains no leakage term
+at all — and the three agree to **0.6 %**.
 
-**The off-state leakage is 35 µA per sensor — 3.5× the specified 10 µA.** That
+**The off-state leakage is 33 µA per sensor — 3.3× the specified 10 µA.** That
 is the surprise, and it is why the thresholds moved. It lifts the *neither
-active* floor from a predicted 29 counts to 102, and adds 42 counts to *one
-active*, taking it from 423 to 466. Against the originally computed
-`SW_TH_BOTH` of 510 that is fatal: at +15 % supply *one active* reaches 536 and
+active* floor from a computed 29 counts to 96, and adds 41 counts to *one
+active*, taking it from 419 to 460. Against the originally computed
+`SW_TH_BOTH` of 510 that is fatal: at +15 % supply *one active* reaches 529 and
 would be decoded as **both active** — a false switch-loop fault, bit 4 set, on
-a healthy installation. Hence 574.
+a healthy installation. Hence 567.
 
 Across ±15 % supply, taking the worse of the two leakage models below:
 
 | | worst low | worst high |
 |---|---|---|
-| Neither active | 87 | **117** |
-| One active | **396** | **536** |
-| Both active | **612** | 828 |
+| Neither active | 82 | **111** |
+| One active | **391** | **529** |
+| Both active | **606** | 820 |
 
-That gives 139/140 counts either side of `SW_TH_ONE` and **38/38 either side
+That gives 140/140 counts either side of `SW_TH_ONE` and **38/39 either side
 of `SW_TH_BOTH`**. The 38 is the tightest point in the design, and it is set
 by the supply-tolerance assumption rather than by the resistors: 68 k is close
 to optimal, because a larger summing resistor improves the one/both ratio but
@@ -584,12 +589,12 @@ worsens the leakage floor, and a smaller one does the reverse. **If the
 installed supply is better regulated than ±15 %, this margin improves
 directly** — worth establishing, because it is the cheapest way to buy room.
 
-**Still open, and it decides more than the thresholds do.** The 35 µA fits two
+**Still open, and it decides more than the thresholds do.** The 33 µA fits two
 physical models identically at room temperature:
 
 | Model | Behaviour | Consequence |
 |---|---|---|
-| Internal bleeder, ≈590 kΩ from +V to the output | resistive, temperature-stable | nothing moves; the bands above hold |
+| Internal bleeder, ≈625 kΩ from +V to the output | resistive, temperature-stable | nothing moves; the bands above hold |
 | Junction leakage | doubles roughly every 10 °C | the *neither active* floor crosses `SW_TH_ONE` after about **12 °C** of warming |
 
 Under the second, the device would report a stop that is not there — and then
