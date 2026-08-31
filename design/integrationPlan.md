@@ -146,9 +146,17 @@ plus the measurement rows. Populates `software/hil/testReport.md`.
 
 ## 7. Hardware-gated test set
 
-Everything below needs a board and cannot start until one exists. The
-sibling project's `integrationPlan.md` §9 is the template — it splits into
-a breadboard MAX3485 rig (before the PCB) and a real-PCB set (RS-485
-electrical rows, power chain, connector pinout, enclosure fit). Reproduce
-that split here once the hardware design begins, and record every executed
-row in `software/hil/testReport.md`.
+**Superseded 2026-08-08 by [`testPlan.md`](testPlan.md).** Hardware was
+wired, which is the condition this placeholder was waiting on. The plan
+there traces every row to a TDS verification clause and groups them by what
+the *current* image can exercise:
+
+- **Group A** — electrical, no firmware. Includes TP-A01, the leakage-versus-
+  temperature test that gates the PCB.
+- **Group B** — protocol and lifecycle, on a flashed device. The largest body
+  of verification available before stage D.
+- **Group C** — measurement, switches and teach. **Blocked**, because
+  `main.c` does not yet call `regs_publish_opening()` or
+  `regs_publish_switches()`; stage D unblocks it.
+
+Executed rows are still recorded in `software/hil/testReport.md`.

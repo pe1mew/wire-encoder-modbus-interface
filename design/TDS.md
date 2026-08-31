@@ -526,61 +526,113 @@ summing happens on the board.
 Load current at 24 V is **290 µA** — three orders below the sensor's 300 mA
 rating, which is the basis for the drop argument in §4.4.4.
 
-#### 4.4.3 Bands (provisional — see §6)
+#### 4.4.3 Bands — MEASURED 2026-08-08
 
-Nominal 24 V, output drop taken as negligible at 290 µA:
+Measured on the bench at a sensor supply of 24.04 V, with the model fitted to
+the readings agreeing to **≤0.1 mV on all three states**:
 
-| State | Node | PC4 | Counts | Status (FR-S33) |
+| State | PC4 measured | Counts | Model | Status (FR-S33) |
 |---|---|---|---|---|
-| Neither active — between the stops | 0.29 V | 0.09 V | **29** | — |
-| One sensor active — at a stop | 4.27 V | 1.36 V | **423** | bit 3 |
-| Both active — wiring or mounting fault | 7.24 V | 2.32 V | **719** | bit 4 |
+| Neither active — between the stops | **0.329 V** | **102** | 102 | — |
+| One sensor active — at a stop | **1.502 V** | **466** | 466 | bit 3 |
+| Both active — wiring or mounting fault | **2.320 V** | **720** | 720 | bit 4 |
 
-Decision thresholds: **<230** neither, **≥230** one active, **≥510** both
+(One active was measured separately per switch: OPEN 1.505 V, CLOSE 1.498 V.
+The 7 mV between them is resistor tolerance — see §4.4.5.)
+
+Decision thresholds: **<256** neither, **≥256** one active, **≥574** both
 active.
 
-**The ordering is inverted** relative to every previous revision of this
-document: with a PNP output, *normal is the lowest reading* and a fault is the
-highest. Zero counts is now a healthy state, not a fault — which is what
-removes the fault band entirely (§4.4.5).
+**The ordering is inverted** relative to every revision before 2026-08-08:
+with a PNP output, *normal is the lowest reading* and a fault the highest.
+Zero counts is a healthy state, which is what removes the fault band (§4.4.6).
 
-#### 4.4.4 Margins, and the one measurement they depend on
+#### 4.4.4 What the bench measurement changed
 
-**Supply tolerance and output drop.** The two together set the spread. At
-±15 % on the 24 V rail:
+Two parameters were unknown when §4.4.2's values were chosen. Both are now
+measured, and they moved in opposite directions.
 
-| | drop ≈ 0 | drop = 2.5 V (the datasheet maximum) |
+**The output drop is zero — the §6 blocker is closed, favourably.** Fitting
+the readings gives `Von` = **24.04 V** against a 24.04 V supply, i.e. no
+measurable drop at this network's 290 µA. The datasheet's ≤2.5 V is a 300 mA
+figure and does not apply here, exactly as suspected. `Von` is confirmed twice
+over and independently: once from *one active* after correcting for leakage,
+and once from *both active*, which contains no leakage term at all and still
+lands on 24.04 V.
+
+**The off-state leakage is 35 µA per sensor — 3.5× the specified 10 µA.** That
+is the surprise, and it is why the thresholds moved. It lifts the *neither
+active* floor from a predicted 29 counts to 102, and adds 42 counts to *one
+active*, taking it from 423 to 466. Against the originally computed
+`SW_TH_BOTH` of 510 that is fatal: at +15 % supply *one active* reaches 536 and
+would be decoded as **both active** — a false switch-loop fault, bit 4 set, on
+a healthy installation. Hence 574.
+
+Across ±15 % supply, taking the worse of the two leakage models below:
+
+| | worst low | worst high |
 |---|---|---|
-| One active | 360 … 487 | 316 … 443 |
-| Both active | 611 … 827 | 536 … 752 |
+| Neither active | 87 | **117** |
+| One active | **396** | **536** |
+| Both active | **612** | 828 |
 
-Against the 510 threshold that leaves **23 counts** at the tightest point —
-*one active* at +15 % with no drop (487) against *both active* at −15 % with
-the full drop (536). That comparison is deliberately pessimistic: it pits two
-different supply voltages against each other, and no single unit sees both. At
-any **fixed** supply the separation is 176 counts or better; at 24 V it is 221.
+That gives 139/140 counts either side of `SW_TH_ONE` and **38/38 either side
+of `SW_TH_BOTH`**. The 38 is the tightest point in the design, and it is set
+by the supply-tolerance assumption rather than by the resistors: 68 k is close
+to optimal, because a larger summing resistor improves the one/both ratio but
+worsens the leakage floor, and a smaller one does the reverse. **If the
+installed supply is better regulated than ±15 %, this margin improves
+directly** — worth establishing, because it is the cheapest way to buy room.
 
-**The drop is the open question, and it is the new §6 blocker.** The ≤2.5 V
-figure is specified at the rated 300 mA. This network draws **290 µA**, where
-the drop across a saturated PNP output should be a small fraction of a volt —
-but the datasheet does not guarantee that, and if the real drop is large the
-23-count margin above is what absorbs it. **Measure `Von` at 290 µA before
-the board is laid out.** If it is under ~0.5 V, the thresholds can be widened
-and the margin becomes 63 counts.
+**Still open, and it decides more than the thresholds do.** The 35 µA fits two
+physical models identically at room temperature:
 
-**Off-state leakage sets the floor.** 0.01 mA per sensor gives 29 counts with
-both inactive. Leakage rises with temperature, and this part now runs to
-+85 °C; even at **five times** the specified figure the *neither active* band
-reaches only 146 counts, 84 clear of the 230 threshold. Choosing 68 k rather
-than a larger value is what buys that: the signal-to-leakage ratio is `Von/Rs`
-against `I_leak`, so a smaller summing resistor improves it directly.
+| Model | Behaviour | Consequence |
+|---|---|---|
+| Internal bleeder, ≈590 kΩ from +V to the output | resistive, temperature-stable | nothing moves; the bands above hold |
+| Junction leakage | doubles roughly every 10 °C | the *neither active* floor crosses `SW_TH_ONE` after about **12 °C** of warming |
 
-**Hysteresis is twenty times tighter than before.** 0.04 mm at worst, against
-the LJ18A3's ≈0.8 mm. A sash that rocks at the stop can therefore chatter the
-output where the old sensor would have held, which is not a band problem but
-makes FR-E15's 20 ms debounce load-bearing rather than precautionary.
+Under the second, the device would report a stop that is not there — and then
+a fault — simply because the sun came out, at an ambient well inside
+NFR-ENV01's +70 °C. **The discriminating test is cheap:** warm one sensor
+about twenty degrees and watch PC4 with the other disconnected. Flat means
+bleeder. Climbing steeply means junction leakage, and 68 k summing into a
+14.7 kΩ load has no headroom for it — the fix would then be a smaller summing
+resistor and a lighter load, a change of values rather than of topology.
+Recorded in §6.
 
-#### 4.4.5 What is given up
+#### 4.4.5 Which switch is active — and why the device does not say
+
+It cannot, by construction: both sensors sum through identical 68 kΩ resistors
+onto one node, so the two one-active states are the same state electrically.
+The bench confirms it — OPEN 1.505 V against CLOSE 1.498 V, **7 mV apart, two
+counts**, which is component tolerance rather than information and will differ
+per unit and drift with temperature.
+
+This is intentional, but the reason has changed and the earlier one is no
+longer sound. `design/scratchBook.md` argued that a two-switch ladder can
+resolve *which* switch **or** *both closed* but not both, as a property of the
+topology. **That was true of the NPN arrangement and is not true of this one.**
+With a PNP output sourcing through its summing resistor the arithmetic
+differs, and asymmetric resistors *can* separate four states: scanning E24
+against the measured bands finds 202 workable pairs at ±15 % supply, the best
+being 75 k / 110 k at 102 / 326 / 434 / 591 counts.
+
+It remains the wrong choice, for a measurable reason rather than an
+impossibility. That arrangement leaves **7 counts** at its tightest point
+where the symmetric pair leaves **38**, and 7 is inside the noise — FR-E12
+allows ±3 counts of ADC spread at a fixed input, and 1 % resistors alone
+consume about 6 of the 7. Nothing would remain for temperature, still less for
+the leakage question above.
+
+The sound argument is simpler: **the position registers already resolve which
+end, far more robustly than the switch path could.** A stop reported at 3 % of
+travel is the closed end and one at 97 % is the open end, separated by most of
+the ADC range instead of by 7 counts. FR-E18 attributes an end-stop capture
+exactly this way. So the switch path spends its resolution on the one thing
+position cannot report — both switches active at once.
+
+#### 4.4.6 What is given up
 
 **There is no fault band at all.** This is the significant loss and it is
 inherent to a PNP normally-open output. *Inactive*, *cable open* and *signal
@@ -605,7 +657,7 @@ are stable.
 **Losing the +V conductor is undetected**, as before — the sensor goes quiet,
 which is indistinguishable from inactive.
 
-#### 4.4.6 What the change buys
+#### 4.4.7 What the change buys
 
 Three things, and the first is worth more than the fault band that was lost.
 
@@ -807,21 +859,21 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   between the calibration points, and the same check is applied to values
   loaded from flash so a degenerate stored pair cannot reach the divisor.
 
-- **The §4.4 band nominals are computed, not measured — blocking for the PCB.**
-  The topology is settled and its margins are wide, but every figure comes from
-  node analysis using a 10 kΩ internal pull-up read off a datasheet drawing.
-  Confirm on a real sensor before the board is laid out: brown-to-black
-  unpowered (expect ~10 kΩ), then `Vsat` at the divider's actual load (a few
-  tens of µA). §4.4.4 shows the design tolerates `Vsat` up to 1.5 V, so this is
-  a confirmation rather than a risk — but an open-collector part with no
-  internal pull-up would change the answer completely.
+- **The §4.4 band nominals — CLOSED 2026-08-08. They are now measured.** All
+  three states were read on the bench and the fitted model agrees to ≤0.1 mV
+  (§4.4.3). The item this replaces was written for the LJ18A3 and asked for its
+  internal pull-up and `Vsat`; the sensor change retired both questions before
+  they were answered. What the measurement found instead was a 35 µA off-state
+  leakage, which is now the item below.
 
-- **An open sensor cable is undetected, and reports a false stop** (§4.4.3) —
-  the standing consequence of the star, recorded here because it is a live
-  limitation rather than a closed decision. A cut lands at 337 counts inside
-  the *one active* band, so the device says "end of travel" when the truth is
-  "I have lost the sensor". FR-E16 and status bit 4 have been narrowed to say
-  so. **A firmware mitigation is available and not yet specified:** once
+- **An open sensor cable is undetected, and reports a *missed* stop**
+  (§4.4.6) — a standing limitation, not a closed decision. With a PNP
+  normally-open output, *inactive*, *cable open* and *shorted to 0 V* are one
+  electrical condition: nothing sourcing, ~0 counts. So the device says
+  "between the stops" when the truth is "I have lost the sensor". **Note the
+  direction changed on 2026-08-08:** under the previous NPN part a cut landed
+  at 337 counts and reported a *false* stop; it now reports a missed one.
+  Neither is detected, and FR-E16 and status bit 4 are narrowed to say so. **A firmware mitigation is available and not yet specified:** once
   FR-E19 has taught the endpoints, a stop claimed while the wiper sits far
   from either calibrated end is implausible, and the two independent
   front-ends can cross-check each other. That would catch most of this class
@@ -835,15 +887,21 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   introduced this; the dry-contact design did not have it. Now a sub-case of
   the item above rather than a separate problem.
 
-- **The output drop at 290 µA is the blocking measurement** (§4.4.4), and it
-  replaces the LJ18A3 bench item that the sensor change retired. The
-  3RG4023-3AB00's ≤2.5 V drop is specified at its rated 300 mA; this network
-  draws three orders less, where the real drop should be a fraction of a volt
-  — but nothing guarantees it, and the difference is 23 counts of margin
-  against 63. Measure `Von` at the divider's actual load, hot and cold, before
-  the board is laid out. While the units are on the bench, confirm the 10 µA
-  off-state current at +85 °C too: it sets the floor of the *neither active*
-  band and the design assumes it stays under five times the specified figure.
+- **The output drop measurement — CLOSED 2026-08-08, favourably.** `Von` is
+  **24.04 V** at a 24.04 V supply: no measurable drop at 290 µA, so the
+  datasheet's ≤2.5 V (a 300 mA figure) does not apply. Confirmed twice over,
+  including once from *both active*, which carries no leakage term.
+
+- **Off-state leakage is 35 µA per sensor, 3.5× the specified 10 µA — and
+  whether it is temperature-dependent is now the blocking question** (§4.4.4).
+  It fits two models identically at room temperature: an internal bleeder of
+  ≈590 kΩ, which is stable, or junction leakage, which doubles roughly every
+  10 °C. Under the second the *neither active* floor crosses `SW_TH_ONE` after
+  about **12 °C** of warming, and the device reports stops that are not there
+  at an ambient well inside NFR-ENV01's +70 °C. Warm one sensor twenty degrees
+  with the other disconnected and watch PC4: flat means bleeder, climbing means
+  the summing network needs a smaller `Rs` and a lighter load. **Nothing else
+  in §4.4 is safe to treat as settled until this is answered.**
 
 - **Sensor polarity is fixed, but the target is not.** The 3RG4023-3AB00 is
   PNP normally-open, so §4.4's sense is settled. What is not settled is the

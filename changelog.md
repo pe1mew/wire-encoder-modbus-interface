@@ -230,6 +230,53 @@ that also monitors its own cable.
   measurement is no longer ratiometric, and both-active vs cable-fault are
   only just distinguishable — both are bit-4 faults, so treat them as one.
   `regs.c`'s classifier and thresholds updated to match.
+- **The §4.4 bands are measured, not computed** (2026-08-08). All three
+  states read on the bench against real sensors, and the fitted model agrees
+  to **≤0.1 mV**:
+
+  | State | Measured | Counts |
+  |---|---|---|
+  | Neither active | 0.329 V | 102 |
+  | One active | 1.502 V | 466 |
+  | Both active | 2.320 V | 720 |
+
+  Two unknowns resolved, in opposite directions. **The output drop is zero**
+  at this network's 290 µA — `Von` = 24.04 V against a 24.04 V supply — so the
+  datasheet's ≤2.5 V, a 300 mA figure, does not apply. That closes the §6
+  blocker, and it is confirmed twice independently: once from *one active*
+  after correcting for leakage, once from *both active*, which carries no
+  leakage term at all and still lands on 24.04 V.
+
+  **But the off-state leakage is 35 µA per sensor, 3.5× the specified 10 µA.**
+  It lifts the *neither active* floor from a predicted 29 counts to 102 and
+  adds 42 to *one active*. Against the computed `SW_TH_BOTH` of 510 that is
+  fatal — at +15 % supply *one active* reaches 536 and would decode as a false
+  **both active** fault on a healthy installation. Thresholds moved to **256
+  and 574**, leaving 139/140 and 38/38 counts either side.
+
+  **What is still open now decides more than the thresholds do.** The 35 µA
+  fits two models identically at room temperature: an internal bleeder of
+  ≈590 kΩ, which is stable, or junction leakage, which doubles roughly every
+  10 °C. Under the second the floor crosses `SW_TH_ONE` after about **12 °C**
+  of warming, and the device reports stops that are not there at an ambient
+  well inside NFR-ENV01's +70 °C. One warm sensor and a voltmeter settles it.
+
+- **Corrected a proof that had gone stale under the sensor change.**
+  `scratchBook.md` argued that a two-switch ladder can resolve *which* switch
+  **or** *both closed* but not both, as a property of the topology. That was
+  derived for the NPN arrangement and is **not true of the PNP one** — with
+  the output sourcing through its summing resistor, asymmetric values can
+  separate four states, and scanning E24 against the measured bands finds 202
+  workable pairs at ±15 % supply. The conclusion survives, the reasoning does
+  not: the best of them (75 k/110 k) leaves **7 counts** at its tightest point
+  where the symmetric pair leaves **38**, and 1 % resistors alone consume 6 of
+  the 7. The sound argument is that the position registers already resolve
+  which end across most of the ADC range, which is how FR-E18 attributes a
+  capture — so the switch path spends its resolution on the one thing position
+  cannot report. Recorded because a margin argument that has quietly become an
+  impossibility claim is exactly what to re-derive after a part change; this
+  one nearly went unexamined.
+
 - **End switch changed to the 3RG4023-3AB00, and it inverts the whole
   interface** (2026-08-08, `documentation/6561.pdf`). The LJ18A3-8-Z/BX was
   **NPN** with an internal 10 kΩ pull-up, so an inactive sensor sat *high*.

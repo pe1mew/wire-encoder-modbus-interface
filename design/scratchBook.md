@@ -241,6 +241,39 @@ and it is worth knowing before spending an afternoon on it.
 Given the opening is already measured to ±0.1 % of travel, *which* switch is
 the redundant one. So spend the resolution elsewhere.
 
+> ⚠️ **Corrected 2026-08-08 — the "not both" claim above is NPN-only.**
+>
+> Everything above assumes the NPN topology: switches *shorting* resistors to
+> GND, where `R_A ∥ R_B` collapses toward the smaller resistor as the two
+> diverge. That is what makes the two goals fight.
+>
+> The 3RG4023-3AB00 is **PNP** and *sources* through its summing resistor, so
+> the arithmetic is different, and four states **can** be separated with
+> asymmetric resistors. Scanning the E24 range against the measured bands
+> finds 202 workable pairs at ±15 % supply. The best, 75 k / 110 k, gives
+> 102 / 326 / 434 / 591 counts — all four states, including which switch.
+>
+> **It is still the wrong choice, but now for a measurable reason rather than
+> an impossibility.** That arrangement leaves **7 counts** at its tightest
+> point where the symmetric 68 k / 68 k pair leaves **38**. Seven is inside
+> the noise: FR-E12 allows ±3 counts of ADC spread at a fixed input, and 1 %
+> resistors alone eat about 6 of the 7 — a 750 Ω error on 75 k moves that band
+> by ~3.6 counts, with the second resistor contributing as much again. Nothing
+> would be left for temperature, and nothing at all for the leakage question
+> in §4.4.4 that is still open.
+>
+> So the conclusion is unchanged and the reasoning is not. The honest form is:
+> *the position registers resolve which end far more robustly than the switch
+> path could, so the switch path spends its resolution on the one thing
+> position cannot report — both switches active at once.* FR-E18 already
+> attributes an end-stop capture that way, by direction of travel and
+> proximity to the calibrated endpoints.
+>
+> Worth noting how this was nearly missed: the claim was true when written,
+> the sensor changed underneath it, and the proof kept reading as if it were a
+> law. A margin argument that has quietly become an impossibility claim is
+> exactly the kind of thing to re-derive after a part change.
+
 ### Recommended: supervised loop
 
 Take the equal-resistor arrangement and add an **end-of-line resistor**

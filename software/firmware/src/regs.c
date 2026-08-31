@@ -198,11 +198,19 @@ static persist_settings_t persisted;
  * relative to earlier revisions of this file: normal is now the LOWEST
  * reading and a fault the highest.
  *
- * Nominals at 24 V, drop taken as negligible at the 290 uA this network draws:
+ * MEASURED on silicon 2026-08-08 at Von = 24.04 V (three states, model
+ * agreement <= 0.1 mV):
  *
- *   neither active, between the stops    29   <  230
- *   one sensor active                   423   >= 230   -> end reached
- *   both active (wiring/mounting fault)  719   >= 510   -> fault
+ *   neither active, between the stops   102   <  256
+ *   one sensor active                   466   >= 256   -> end reached
+ *   both active (wiring/mounting fault) 720   >= 574   -> fault
+ *
+ * The output drop is ZERO at this network's 290 uA — the datasheet's <=2.5 V
+ * is a 300 mA figure and does not apply. But the OFF-STATE LEAKAGE is 35 uA
+ * per sensor, 3.5x the specified 10 uA, which lifts the floor from 29 counts
+ * to 102 and adds 42 counts to "one active". That is why SW_TH_BOTH is 574
+ * and not the 510 originally computed: at +15 % supply one-active reaches 536
+ * and would otherwise decode as a false BOTH_ACTIVE fault.
  *
  * THERE IS NO FAULT BAND AT THE BOTTOM, and that is not an oversight. A PNP
  * normally-open output sources nothing when inactive, when its cable is open,
@@ -212,17 +220,22 @@ static persist_settings_t persisted;
  * part it reported a false one. Both are documented limits (FR-E14/FR-E16),
  * not bugs to be fixed by moving a threshold.
  *
- * Margins: 84 counts below the 230 threshold even at five times the specified
- * 10 uA off-state leakage; 23 counts at the 510 threshold in the worst case,
- * which pits one-active at +15 % supply against both-active at -15 % with the
- * full datasheet output drop. At any fixed supply the separation is >=176.
- * That 23 shrinks or grows with the output drop at 290 uA, which is the
- * measurement TDS §6 is waiting on — the <=2.5 V figure is specified at the
- * rated 300 mA and should be far smaller here.
+ * Margins across +/-15 % supply, worst case of both leakage models:
+ *   neither <= 117 | one 396..536 | both >= 612
+ * giving 139/140 counts either side of SW_TH_ONE and 38/38 either side of
+ * SW_TH_BOTH. The 38 is the tightest point in the design and it is set by the
+ * supply tolerance assumption, not by the resistors — 68k is close to optimal
+ * here, because a larger Rs improves the one/both ratio but worsens the
+ * leakage floor, and a smaller one does the reverse.
  *
- * These are computed, not yet measured — see TDS §6. */
-#define SW_TH_ONE   230u
-#define SW_TH_BOTH  510u
+ * STILL OPEN (TDS §6): whether the 35 uA is an internal bleeder (~590k,
+ * temperature-stable) or junction leakage (doubles ~every 10 C). Both fit the
+ * bench data identically at room temperature. Under the second, the floor
+ * crosses SW_TH_ONE after only ~12 C of warming and the device reports stops
+ * that are not there. Do not treat these thresholds as settled until a hot
+ * reading says which. */
+#define SW_TH_ONE   256u
+#define SW_TH_BOTH  574u
 
 typedef enum {
 	SW_NEITHER = 0,  /* between the stops — and also an open or shorted
