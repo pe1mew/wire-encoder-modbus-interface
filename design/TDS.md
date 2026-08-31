@@ -289,7 +289,7 @@ implementation.
 
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
-| FR-E11 | Must | The raw code shall be obtained by reading the potentiometer wiper voltage on PA2 using the ADC in 10-bit ratiometric mode referenced to VDD. No external reference shall be used. | Via 30005: wiper at each mechanical end stop reads ≤5 and ≥1018 respectively. |
+| FR-E11 | Must | The raw code shall be obtained by reading the potentiometer wiper voltage on PA2 using the ADC in 10-bit ratiometric mode referenced to VDD. No external reference shall be used. | Via 30005: wiper at each mechanical end stop reads ≤5 and ≥1018 respectively. **PC4 shall be configured as an analog input with no pull-up or pull-down.** A pulled-up digital input sources ~63 µA into the §4.4 summing node from the MCU's own 47 kΩ, shifting every band and presenting exactly as sensor leakage — observed on the bench 2026-08-08 and diagnosed only after a full day. | Code review confirms PC4's mode and that no pull is enabled. On the bench, PC4 with both sensors disconnected reads ≤5 counts. |
 | FR-E12 | Must | The ADC sample time shall be configured to **≥241 cycles**. The pot contributes 2.5 kΩ at mid-scale and FR-E21's protection adds 10 kΩ in series, so the DC source impedance is 12.5 kΩ — above the 10 kΩ the previous ≥71-cycle setting was chosen for. The C6 reservoir (§4.3) means the sample capacitor does not actually charge through that resistance, but the longer sample time costs nothing measurable (~42 µs per conversion against a ≥100 ms window) and removes the need to rely on the reservoir argument. | Code review confirms the sample-time setting. Via 30005: 32 consecutive reads at a fixed mid position span ≤3 counts, and the mid-scale code shifts ≤1 count when R11 is shorted out on the bench. |
 | FR-E13 | Must | Each update of 30001 shall be derived from ≥16 ADC conversions (mean, or median with outlier rejection) at an update rate of ≥10 Hz. | Code review of the conversion scheme; the FR-E03 stability criterion (span ≤3 LSB over 100 reads) passes. |
 
@@ -528,83 +528,76 @@ rating, which is the basis for the drop argument in §4.4.4.
 
 #### 4.4.3 Bands — MEASURED 2026-08-08
 
-Measured on the bench at `Von` = 23.82 V, with the model fitted to the
-readings agreeing to **≤1 mV on all three states**:
+Measured at `Von` = 23.09 V against a 24.1 V rail. `Von` is confirmed by
+**three independent routes agreeing to 0.2 %** — each switch alone, and both
+together, which carries no leakage term at all:
 
-| State | PC4 measured | Counts | Model | Status (FR-S33) |
-|---|---|---|---|---|
-| Neither active — between the stops | **0.310 V** | **96** | 96 | — |
-| One sensor active — at a stop | **1.481 V** | **460** | 460 | bit 3 |
-| Both active — wiring or mounting fault | **2.300 V** | **714** | 713 | bit 4 |
+| State | PC4 measured | Counts | Status (FR-S33) |
+|---|---|---|---|
+| Neither active — between the stops | **−0.019 V** | **0** | — |
+| One sensor active — at a stop | **1.291 V** | **401** | bit 3 |
+| Both active — wiring or mounting fault | **2.210 V** | **686** | bit 4 |
 
-(One active was measured separately per switch: OPEN 1.477 V, CLOSE 1.485 V.
-The 8 mV between them is resistor tolerance — see §4.4.5.)
-
-Decision thresholds: **<251** neither, **≥251** one active, **≥567** both
+Decision thresholds: **<170** neither, **≥170** one active, **≥522** both
 active.
 
-> **These replace a first set taken the same day on a faulty rig.** That bench
-> still had **R10 fitted** and **R5 floating**, so it was neither the schematic
-> nor a divider. The TP-A00 rig check in [`testPlan.md`](testPlan.md) found
-> both. Nothing measured before the fix should be trusted — though the leakage
-> figure survived it almost unchanged, 35 → 33 µA.
+> **This is the fourth set taken today and the only trustworthy one.** The
+> earlier three were measured on a bench that variously had **R10 fitted**,
+> **R5 floating**, another wiring error, and — the one that survived all the
+> rig fixes — **the MCU's internal pull-up on PC4**. Each set produced a
+> plausible fit. All three are discarded. The rig check (TP-A00 in
+> [`testPlan.md`](testPlan.md)) is what eventually caught them.
 
-**The ordering is inverted** relative to every revision before 2026-08-08:
-with a PNP output, *normal is the lowest reading* and a fault the highest.
-Zero counts is a healthy state, which is what removes the fault band (§4.4.6).
+**The ordering is inverted** relative to any revision before 2026-08-08: with
+a PNP output, *normal is the lowest reading* and a fault the highest.
 
-#### 4.4.4 What the bench measurement changed
+#### 4.4.4 What the bench measurement established
 
-Two parameters were unknown when §4.4.2's values were chosen. Both are now
-measured, and they moved in opposite directions.
+**The sensors do not leak.** Connecting or disconnecting both of them moves
+PC4 by **0.9 mV** — below the noise floor, and far inside the 10 µA the
+datasheet allows. Every "off-state leakage" figure this document previously
+carried (35 µA, then 33 µA) was **the MCU's own internal pull-up on PC4**:
+about 47 kΩ to 3V3, sourcing ~63 µA into the summing node, enabled by whatever
+image was in flash. It disappeared the moment the current firmware was
+programmed, because that build never configures PC4 and the reset default is a
+floating input.
 
-**The output drop is zero — the §6 blocker is closed, favourably.** Fitting
-the readings gives `Von` = **23.82 V**, no measurable drop at this network's
-290 µA. The datasheet's ≤2.5 V is a 300 mA figure and does not apply here,
-exactly as suspected. `Von` is confirmed **three** times independently — from
-each switch separately and from *both active*, which contains no leakage term
-at all — and the three agree to **0.6 %**.
+Two things follow, and the second is a design constraint rather than a
+measurement.
 
-**The off-state leakage is 33 µA per sensor — 3.3× the specified 10 µA.** That
-is the surprise, and it is why the thresholds moved. It lifts the *neither
-active* floor from a computed 29 counts to 96, and adds 41 counts to *one
-active*, taking it from 419 to 460. Against the originally computed
-`SW_TH_BOTH` of 510 that is fatal: at +15 % supply *one active* reaches 529 and
-would be decoded as **both active** — a false switch-loop fault, bit 4 set, on
-a healthy installation. Hence 567.
+- The leakage-versus-temperature question that gated the PCB **dissolves.**
+  There is no leakage for temperature to act on, so TP-A01 is not needed.
+- **PC4 must be an analog input with no pull.** If `we_init()` ever leaves it
+  as a pulled-up digital input the 63 µA returns, every band shifts, and it
+  presents exactly as sensor leakage — which is what cost a full bench day.
+  Now explicit in FR-E11.
 
-Across ±15 % supply, taking the worse of the two leakage models below:
+**There is an output drop after all: 1.01 V at 290 µA.** An earlier revision
+of this section claimed it was zero, fitted to data taken while the pull-up was
+fighting the divider. The datasheet's ≤2.5 V is specified at 300 mA and does
+not scale down to nothing at microamps — which is unsurprising for a protected
+industrial output stage, and is why `Von` is 23.09 V rather than the rail's
+24.1 V.
+
+**A constant −19 mV** sits at PC4 with the sensors disconnected, roughly 4 µA
+sunk board-side. It is 6 counts, does not vary with state, and correcting for
+it tightens the `Von` agreement from 0.8 % to 0.2 % — which is the evidence
+that it is real and constant rather than noise. Unexplained; too small to
+matter, large enough to write down.
+
+**Margins across ±15 % supply:**
 
 | | worst low | worst high |
 |---|---|---|
-| Neither active | 82 | **111** |
-| One active | **391** | **529** |
-| Both active | **606** | 820 |
+| Neither active | 0 | **0** |
+| One active | **340** | **462** |
+| Both active | **582** | 790 |
 
-That gives 140/140 counts either side of `SW_TH_ONE` and **38/39 either side
-of `SW_TH_BOTH`**. The 38 is the tightest point in the design, and it is set
-by the supply-tolerance assumption rather than by the resistors: 68 k is close
-to optimal, because a larger summing resistor improves the one/both ratio but
-worsens the leakage floor, and a smaller one does the reverse. **If the
-installed supply is better regulated than ±15 %, this margin improves
-directly** — worth establishing, because it is the cheapest way to buy room.
-
-**Still open, and it decides more than the thresholds do.** The 33 µA fits two
-physical models identically at room temperature:
-
-| Model | Behaviour | Consequence |
-|---|---|---|
-| Internal bleeder, ≈625 kΩ from +V to the output | resistive, temperature-stable | nothing moves; the bands above hold |
-| Junction leakage | doubles roughly every 10 °C | the *neither active* floor crosses `SW_TH_ONE` after about **12 °C** of warming |
-
-Under the second, the device would report a stop that is not there — and then
-a fault — simply because the sun came out, at an ambient well inside
-NFR-ENV01's +70 °C. **The discriminating test is cheap:** warm one sensor
-about twenty degrees and watch PC4 with the other disconnected. Flat means
-bleeder. Climbing steeply means junction leakage, and 68 k summing into a
-14.7 kΩ load has no headroom for it — the fix would then be a smaller summing
-resistor and a lighter load, a change of values rather than of topology.
-Recorded in §6.
+That is **170/170** counts either side of `SW_TH_ONE` and **60/60** either
+side of `SW_TH_BOTH` — comfortably better than the 38/39 the leakage-corrupted
+fit predicted, because with no leakage there is neither a floor to lift nor an
+offset added to *one active*. 68 kΩ remains a good choice; nothing needs
+re-sizing.
 
 #### 4.4.5 Which switch is active — and why the device does not say
 
@@ -892,21 +885,25 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   introduced this; the dry-contact design did not have it. Now a sub-case of
   the item above rather than a separate problem.
 
-- **The output drop measurement — CLOSED 2026-08-08, favourably.** `Von` is
-  **24.04 V** at a 24.04 V supply: no measurable drop at 290 µA, so the
-  datasheet's ≤2.5 V (a 300 mA figure) does not apply. Confirmed twice over,
-  including once from *both active*, which carries no leakage term.
+- **Output drop and off-state leakage — BOTH CLOSED 2026-08-08, and both
+  differently from the first answer.** The drop is **1.01 V at 290 µA**, not
+  the zero an earlier fit reported; `Von` is 23.09 V against a 24.1 V rail,
+  confirmed by three routes agreeing to 0.2 %. The leakage is **nil** —
+  connecting or disconnecting both sensors moves PC4 by 0.9 mV. What had been
+  recorded as 35 µA and then 33 µA of sensor leakage was the **MCU's internal
+  pull-up on PC4**, ~47 kΩ to 3V3, left enabled by the image in flash. It went
+  away when the current firmware was programmed.
 
-- **Off-state leakage is 35 µA per sensor, 3.5× the specified 10 µA — and
-  whether it is temperature-dependent is now the blocking question** (§4.4.4).
-  It fits two models identically at room temperature: an internal bleeder of
-  ≈590 kΩ, which is stable, or junction leakage, which doubles roughly every
-  10 °C. Under the second the *neither active* floor crosses `SW_TH_ONE` after
-  about **12 °C** of warming, and the device reports stops that are not there
-  at an ambient well inside NFR-ENV01's +70 °C. Warm one sensor twenty degrees
-  with the other disconnected and watch PC4: flat means bleeder, climbing means
-  the summing network needs a smaller `Rs` and a lighter load. **Nothing else
-  in §4.4 is safe to treat as settled until this is answered.**
+  Consequences: **TP-A01 is not needed** — no leakage for temperature to act
+  on — and the thresholds improve to 170/522 with 170 and 60 counts of margin
+  against the 38/39 the corrupted fit predicted. **PC4 must be an analog input
+  with no pull**, now explicit in FR-E11; if that regresses the 63 µA returns
+  and presents as sensor leakage all over again.
+
+  Recorded at length because three plausible fits were published and retracted
+  before the rig was believed over the arithmetic. The tell was there early:
+  *one active* to *both active* stepping 50 mV where the topology requires it
+  to roughly double.
 
 - **Sensor polarity is fixed, but the target is not.** The 3RG4023-3AB00 is
   PNP normally-open, so §4.4's sense is settled. What is not settled is the

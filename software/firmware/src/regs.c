@@ -198,50 +198,45 @@ static persist_settings_t persisted;
  * relative to earlier revisions of this file: normal is now the LOWEST
  * reading and a fault the highest.
  *
- * MEASURED on silicon 2026-08-08 at Von = 23.82 V (three states, model
- * agreement <= 1 mV; Von independently consistent to 0.6 % across all three):
+ * MEASURED on silicon 2026-08-08, final set, at Von = 23.09 V. Von is
+ * confirmed by three independent routes agreeing to 0.2 %: each switch alone,
+ * and both together (which carries no leakage term at all).
  *
- *   neither active, between the stops    96   <  251
- *   one sensor active                   460   >= 251   -> end reached
- *   both active (wiring/mounting fault) 713   >= 567   -> fault
+ *   neither active, between the stops     0   <  170
+ *   one sensor active                   401   >= 170   -> end reached
+ *   both active (wiring/mounting fault) 686   >= 522   -> fault
  *
- * The output drop is ZERO at this network's 290 uA — the datasheet's <=2.5 V
- * is a 300 mA figure and does not apply. But the OFF-STATE LEAKAGE is 33 uA
- * per sensor, 3.3x the specified 10 uA, which lifts the floor from a computed
- * 29 counts to 96 and adds 41 counts to "one active". That is why SW_TH_BOTH
- * is 567 and not the 510 originally computed: at +15 % supply one-active
- * reaches 529 and would otherwise decode as a false BOTH_ACTIVE fault.
+ * TWO CORRECTIONS TO EARLIER FIGURES IN THIS FILE, both from the same cause.
  *
- * These figures replace a first set taken 2026-08-08 on a rig that still had
- * R10 fitted and R5 floating. Both faults were found by the TP-A00 rig check
- * and the numbers were re-taken; the leakage survived the correction almost
- * unchanged (35 -> 33 uA), but nothing measured before the fix should be
- * trusted.
+ *   - THE SENSORS DO NOT LEAK. Connecting or disconnecting both of them moves
+ *     PC4 by 0.9 mV, which is below the noise floor and far under the 10 uA
+ *     the datasheet allows. Every "off-state leakage" figure recorded earlier
+ *     (35 uA, then 33 uA) was this MCU's INTERNAL PULL-UP on PC4 -- roughly
+ *     47k to 3V3, sourcing ~63 uA -- left enabled by whatever image was in
+ *     flash before this one. It vanished the moment the current build was
+ *     programmed, because this firmware never configures PC4.
+ *   - THERE IS AN OUTPUT DROP after all: 1.01 V at 290 uA, against a 24.1 V
+ *     rail. An earlier note here claimed the drop was zero; that was fitted to
+ *     data taken while the pull-up was fighting the divider. The datasheet's
+ *     <=2.5 V at 300 mA does not scale down to nothing at microamps, as a
+ *     protected industrial output stage would not be expected to.
  *
- * THERE IS NO FAULT BAND AT THE BOTTOM, and that is not an oversight. A PNP
- * normally-open output sources nothing when inactive, when its cable is open,
- * and when its signal is shorted to 0 V — all three read ~0 and are
- * indistinguishable. Zero counts is a HEALTHY reading here. An open sensor
- * cable therefore reports a MISSED stop, silently; under the previous NPN
- * part it reported a false one. Both are documented limits (FR-E14/FR-E16),
- * not bugs to be fixed by moving a threshold.
+ * A constant -19 mV sits at PC4 with the sensors disconnected, about 4 uA
+ * being sunk board-side. It is 6 counts and does not vary with state.
+ * Correcting for it tightens the Von agreement from 0.8 % to 0.2 %, which is
+ * the evidence that it is real and constant rather than noise.
  *
- * Margins across +/-15 % supply, worst case of both leakage models:
- *   neither <= 111 | one 391..529 | both >= 606
- * giving 140/140 counts either side of SW_TH_ONE and 38/39 either side of
- * SW_TH_BOTH. The 38 is the tightest point in the design and it is set by the
- * supply tolerance assumption, not by the resistors — 68k is close to optimal
- * here, because a larger Rs improves the one/both ratio but worsens the
- * leakage floor, and a smaller one does the reverse.
+ * Margins across +/-15 % supply: neither 0 | one 340..462 | both 582..790,
+ * giving 170/170 counts either side of SW_TH_ONE and 60/60 either side of
+ * SW_TH_BOTH -- comfortably better than the 38/39 the leakage-corrupted fit
+ * predicted, because there is no floor lift and no offset added to one-active.
  *
- * STILL OPEN (TDS §6): whether the 33 uA is an internal bleeder (~625k,
- * temperature-stable) or junction leakage (doubles ~every 10 C). Both fit the
- * bench data identically at room temperature. Under the second, the floor
- * crosses SW_TH_ONE after only ~12 C of warming and the device reports stops
- * that are not there. Do not treat these thresholds as settled until a hot
- * reading says which. */
-#define SW_TH_ONE   251u
-#define SW_TH_BOTH  567u
+ * DO NOT let PC4 be configured as a pulled-up digital input. Once we_init()
+ * lands it must be an ANALOG input with no pull. If that ever regresses, the
+ * 63 uA returns, every band shifts, and it looks exactly like sensor leakage
+ * -- which cost a full bench day to see through. */
+#define SW_TH_ONE   170u
+#define SW_TH_BOTH  522u
 
 typedef enum {
 	SW_NEITHER = 0,  /* between the stops — and also an open or shorted
