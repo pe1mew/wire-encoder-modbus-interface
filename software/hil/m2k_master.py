@@ -122,24 +122,95 @@ class M2kMaster:
             libm2k.contextClose(self.ctx, True)
 
     # ── the ten-second proof the rig is alive ──────────────────────────────
-    def selftest(self) -> None:
-        """Static DE/DI exercise: drive space, drive mark, release.
+    def selftest(self) -> bool:
+        """Drive space, drive mark, release — and **measure** A/B each time.
 
-        Watch A/B on the scope. Space and mark should differ by ~2 V
-        differential; released should collapse to the bias level. If nothing
-        moves, V+ is not reaching the transceiver — check that before
-        suspecting anything else.
+        Requires the bus on M2K scope 1+/2+. Returns True on pass.
+
+        Three checks. The third is the one that matters and the one an earlier
+        version of this file did not make:
+
+        1. **The driver drives.** |differential| >= MIN_DIFF_V when asserted.
+           If this fails, V+ is not reaching the transceiver — an unpowered
+           MAX3485 is inert and looks exactly like a wiring fault.
+        2. **The polarity inverts.** Mark and space must have *opposite* signs.
+        3. **The driver releases.** On DE low the differential must collapse to
+           well under the driven level. A transceiver whose DE is stuck high
+           passes checks 1 and 2 perfectly while driving the bus continuously —
+           contending with every reply and, since R̄Ē is tied to DE, never
+           receiving one. That fault cost a full session on 2026-08-08: the
+           released differential sat 44 mV from the driven one and the test,
+           which only compared mark against space, reported success.
+
+        Polarity is derived, not assumed: **A is whichever line is high during
+        mark** (RS-485 idle/mark is A > B). So a swapped probe pair is reported
+        rather than failed, and a genuinely crossed bus shows up as an idle
+        bias that disagrees with mark.
         """
-        for label, de, tx in (("drive space", libm2k.HIGH, libm2k.LOW),
-                              ("drive mark ", libm2k.HIGH, libm2k.HIGH),
-                              ("released   ", libm2k.LOW, libm2k.HIGH)):
+        MIN_DIFF_V = 1.0        # a 3.3 V MAX3485 into a loaded bus
+        RELEASE_RATIO = 0.5     # released must be at most half the driven level
+
+        ain = self.ctx.getAnalogIn()
+        self.ctx.calibrateADC()
+        for ch in (0, 1):
+            ain.enableChannel(ch, True)
+            ain.setRange(ch, libm2k.PLUS_MINUS_25V)
+        ain.setSampleRate(100_000)
+
+        def measure(de: int, tx: int) -> tuple[float, float]:
             self.dig.setValueRaw(DIO_DE, de)
             self.dig.setValueRaw(DIO_TX, tx)
-            print(f"  {label}  DE={'H' if de == libm2k.HIGH else 'L'} "
-                  f"DI={'H' if tx == libm2k.HIGH else 'L'}")
-            time.sleep(1.0)
+            time.sleep(0.3)
+            # DISCARD THE FIRST BUFFER. libm2k's analog input is buffered, and
+            # the first getSamples() after a state change can hand back the
+            # buffer that was in flight before it — so a single read reports
+            # the PREVIOUS state. That is not academic: with one read per
+            # state, `released` came back bit-identical to `drive mark`
+            # (0.817 V / 2.138 V, to three decimals) on 2026-08-08 and the
+            # test spent an hour accusing the rig of a fault it did not have.
+            # Identical values to three decimals are a repeated buffer, not a
+            # measurement.
+            ain.getSamples(4000)
+            s = ain.getSamples(4000)
+            mid = lambda v: sorted(v)[len(v) // 2]
+            return mid(s[0]), mid(s[1])
+
+        states = {}
+        print(f"  {'state':<14}{'ch0':>9}{'ch1':>9}{'ch0-ch1':>10}")
+        for label, de, tx in (("drive space", libm2k.HIGH, libm2k.LOW),
+                              ("drive mark", libm2k.HIGH, libm2k.HIGH),
+                              ("released", libm2k.LOW, libm2k.HIGH)):
+            c0, c1 = measure(de, tx)
+            states[label] = c0 - c1
+            print(f"  {label:<14}{c0:>8.3f}V{c1:>8.3f}V{c0 - c1:>9.3f}V")
         self.dig.setValueRaw(DIO_DE, libm2k.LOW)
         self.dig.setValueRaw(DIO_TX, libm2k.HIGH)
+
+        space, mark, idle = (states["drive space"], states["drive mark"],
+                             states["released"])
+        driven = max(abs(space), abs(mark))
+        a_is = "ch1" if mark < 0 else "ch0"      # A is high during mark
+
+        checks = [
+            ("driver drives", driven >= MIN_DIFF_V,
+             f"{driven:.3f} V >= {MIN_DIFF_V} V"),
+            ("polarity inverts between mark and space",
+             (space > 0) != (mark > 0),
+             f"space {space:+.3f} V, mark {mark:+.3f} V"),
+            ("driver RELEASES on DE low", abs(idle) <= RELEASE_RATIO * driven,
+             f"idle {abs(idle):.3f} V <= {RELEASE_RATIO:.0%} of {driven:.3f} V"),
+        ]
+        print()
+        for name, ok, detail in checks:
+            print(f"  [{'PASS' if ok else 'FAIL'}] {name:<42} {detail}")
+
+        print(f"\n  A is {a_is} (the line high during mark); "
+              f"idle bias is {'mark' if (idle < 0) == (mark < 0) else 'SPACE'} "
+              f"polarity at {abs(idle) * 1000:.0f} mV")
+        if abs(idle) > 0.001 and (idle < 0) != (mark < 0):
+            print("  ^ idle bias opposes mark: the bias network is backwards, "
+                  "or A/B are crossed between master and DUT.")
+        return all(ok for _, ok, _ in checks)
 
     # ── transport ──────────────────────────────────────────────────────────
     def _word(self, tx: int, de: int) -> int:
@@ -230,8 +301,14 @@ def main() -> int:
               f"{BAUD} baud, t3.5 = {T35_S * 1000:.2f} ms, "
               f"gap = {HOUSE_GAP_S * 1000:.0f} ms")
         if args.selftest:
-            print("static DE/DI exercise — watch A/B on the scope:")
-            m.selftest()
+            print("measured DE/DI exercise (bus on scope 1+/2+):")
+            if not m.selftest():
+                print("\nSELFTEST FAILED — fix the rig before trusting any "
+                      "Group B result. Nothing downstream is meaningful until "
+                      "this passes.")
+                return 1
+            print("\nSELFTEST PASSED — transceiver powered, driving, and "
+                  "releasing.")
             return 0
 
         print(f"\npolling unit {args.unit} ...")

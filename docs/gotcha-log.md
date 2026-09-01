@@ -14,6 +14,29 @@ holds measured evidence.
 
 ---
 
+### An instrument's stale buffer accused the rig for an hour (2026-08-08)
+**Problem**: The M2K selftest reported that the master's RS-485 driver would
+not release the bus — `released` measured identical to `drive mark`. An hour
+went into hunting a wiring fault that did not exist: continuity checks, bias
+resistors added, powering the master's transceiver down to see which end was
+driving, and a 20-cycle intermittency test that came back 20/20 good and was
+therefore *disbelieved*.
+**Root cause**: **libm2k's analog input is buffered, and the first
+`getSamples()` after a state change returns the buffer already in flight** —
+so a single read per state reports the *previous* state. The selftest read
+once per state; the ad-hoc diagnostic scripts happened to read two or three
+times, which primed the pipeline and hid it. That is why the two disagreed,
+which should have been the clue.
+**Fix**: Discard one buffer after every state change, with a comment saying
+why so nobody deletes it as redundant (`m2k_master.py`, `selftest`). Three
+consecutive runs then passed deterministically.
+**The tell, missed for an hour**: `released` was **bit-identical** to
+`drive mark` — 0.817 V / 2.138 V, to three decimals. Two independent physical
+measurements never agree to three decimals. Identical values are a repeated
+buffer, not a measurement.
+
+---
+
 ### Three measurement sets fitted to a broken bench (2026-08-08)
 **Problem**: Four sets of switch-band measurements were taken across one day.
 The first three were each fitted to a model, documented in the TDS as
@@ -113,3 +136,24 @@ new categories. Snap new coordinates to the **1.27 mm** connection grid —
 off-grid endpoints do not connect and look identical to ones that do. And never
 edit while KiCad has the file open (check for `~*.lck`), or the next save
 discards the work.
+
+### When two measurements of the same thing disagree, that disagreement *is* the data
+
+Promoted after this bit twice in one day, from opposite directions: first a
+model was refitted three times against a bench that did not match the
+schematic, then a bench was accused for an hour on the word of an instrument
+that was returning stale buffers.
+
+Both times the contradiction was visible early and was explained away instead
+of investigated. Two concrete tells worth keeping:
+
+- **Readings identical to full precision are an artefact.** Two independent
+  physical measurements do not agree to three decimals. When they do, suspect
+  a cached buffer, a repeated read, or a value that never updated.
+- **When a purpose-built test and an ad-hoc script disagree, stop.** Do not
+  pick the one that fits the story. The difference between them is the fault —
+  here it was one script reading twice per state and the other once.
+
+Corollary: a diagnostic that returns a *clean* result you did not expect
+(20/20 releases when you are hunting an intermittent fault) is evidence, not
+noise. Disbelieving it cost most of the hour.
