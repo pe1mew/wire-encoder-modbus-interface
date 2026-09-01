@@ -139,6 +139,7 @@ reported.
 | TP-B19 | FR-S39 | **PASS** — all six persisted holdings survived exactly; 40007 correctly did not. |
 | TP-B21 | FR-S20 | **PASS** — watchdog recovered the stalled loop in **1.20 s**, no power cycle (budget 3 s). |
 | TP-B22 | FR-S21 | **PASS** — six post-reset state checks; see below. |
+| TP-B20 | FR-S39 | **PARTIAL — 13 of 20 cycles, no corruption.** See below. |
 | TP-B35 | FR-S16, FR-MB23 | **PASS** — 10 000 cycles, 30009 unchanged, 30010 advanced by exactly 10 000. See below. |
 | TP-B24 | FR-S19 | **PASS** (partial scope) — bus never left the fail-safe bias across a real power cycle; peak 0.296 V. See below. |
 | TP-B33 | FR-MB28 | **PASS** — FC03/FC04 quantity 0 and 126, FC16 quantity 0 and byte-count mismatch: exception 03 each, nothing modified. |
@@ -433,6 +434,56 @@ its own sanity check was applied. The rule earned here is narrower and worth
 keeping: **a verdict that blames the device must first rule out the instrument,
 and "my capture contains something" is not evidence that the something is
 correct.**
+
+### TP-B20 — the persistence store under torn writes (PARTIAL, 13 of 20)
+
+**No corruption in 13 power cycles**, each preceded by ~200 writes driven at
+roughly 22 % flash duty. Every cycle returned a valid record:
+
+    40001 = 111 or 222        one of the two values actually written
+    40002-40006 = 1100, 11, 11000, 100, 900
+
+Several cycles came back with uptime at **0 s**, so the cut landed during or
+immediately after a burst — real mid-write interruptions, not merely clean
+cycles. The store never fell back to the §2.8 defaults, which is the signature
+this row hunts: FR-S21 restores defaults when the persistent record is judged
+blank or corrupt, so seeing defaults after writing non-defaults *is* the
+corruption.
+
+Every value is deliberately non-default for that reason. Had the settings been
+left at their defaults, "survived" and "was lost and restored from defaults"
+would read identically.
+
+**Why the timing had to be forced.** A flash save is ~6 ms, once per changed
+holding set, immediately after the Modbus response. Hitting it by hand is
+impossible — human reaction is ~50x too slow. The cut can only land mid-write by
+chance, and that chance *is* the flash duty cycle. Hence the burst: FC06 writes
+sent fire-and-forget, spaced 27 ms so our next frame does not collide with the
+DUT's reply, giving ~22 % duty and an expected ~3 genuine mid-write hits across
+13 cycles.
+
+**Cost:** ~4 600 flash writes, ~2 300 per ping-pong record — roughly 23 % of a
+conservative 10 000-cycle endurance budget on this board. Approved deliberately;
+a gentler test would have exercised almost nothing.
+
+**Status: PARTIAL.** The row asks for 20 cycles; 13 were performed. 30009 also
+picked up 1 CRC error across the run, consistent with power being removed
+part-way through a frame — expected, and not a fault.
+
+**Three instrumentation bugs were found and fixed while running this row**, and
+none of them were the DUT:
+
+1. The cycle detector compared uptime against a baseline read at round start.
+   After a cycle that baseline is 0–2 s, so the next cycle's uptime was not
+   reliably *less* than it and resets went unseen — 2 of 20 detected on the
+   first attempt. Now judged against **elapsed wall time**: a running device's
+   uptime must track the clock, and lagging by >3 s means it restarted.
+2. An unguarded uptime read at round start crashed when the operator still had
+   power off.
+3. "No reply after the cycle" was recorded as a **FAILURE** when the only fact
+   established was that power had not been restored yet. One round was reported
+   corrupt on that basis; the result was discarded, not counted against the
+   device.
 
 ### The test build is indistinguishable from the release build
 
