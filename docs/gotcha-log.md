@@ -253,6 +253,44 @@ the only check that catches a silently-wrong net.
 
 Recurrences that have earned a standing rule.
 
+### A test that blames the device must first rule out the instrument
+
+Promoted after this happened **four times in one bench session** (2026-09-01),
+each time reporting a defect in the DUT that did not exist:
+
+| Row | Reported | Actually |
+|---|---|---|
+| FR-MB20 latency | 11.85 ms | **4.08 ms** — the origin was taken from RX, where our own frame does not appear |
+| TP-B32 (FR-MB04) | FAIL, −6.5 ms release lag | PASS — a magnitude threshold split one drive window into one fragment per bit |
+| TP-B35 (FR-S16) | FAIL, 4 captures "implicate the TX clock" | PASS — truncated captures have edges too, and were filed under the DUT's fault |
+| TP-B20 (FR-S39) | one round "corrupt" | not corrupt — the operator simply had not switched power back on |
+
+Every one had the same shape: **a verdict was computed before the measurement's
+own sanity check was applied.** In each case the check existed and was cheap:
+
+- a 7-byte frame cannot occupy a 1.04 ms drive window — the frame length was
+  known before the measurement started;
+- 30009 read **0** throughout, so the DUT's receive path was provably fine and
+  the corruption could only be ours;
+- the DUT's own served counter advanced by *exactly* the number of requests
+  sent, while our capture claimed to have missed some.
+
+Concrete rules:
+
+- **Predict the measurement's duration from first principles and check it
+  before reading the verdict.** A timing you cannot account for has not been
+  understood, however comfortably it sits inside its limit.
+- **"My capture contains something" is not evidence the something is correct.**
+  Truncated, clipped and empty captures all "contain edges" to a naive test.
+  Classify them apart or do not classify at all.
+- **Ask the device what it thinks happened.** It counts its own CRC errors and
+  served requests. Those counters sit on the far side of the link and settle
+  most arguments in one read.
+- **Never return FAIL when the honest verdict is "could not measure".** An
+  unmeasurable quantity says nothing about whether the device met it. Report
+  BLOCKED or INCONCLUSIVE, so a limitation of the rig can never be read later
+  as a defect in the product.
+
 ### If a measurement does not fit the model, suspect the rig before refitting
 
 A model that needs a **new free parameter for every measurement** is describing

@@ -139,7 +139,7 @@ reported.
 | TP-B19 | FR-S39 | **PASS** — all six persisted holdings survived exactly; 40007 correctly did not. |
 | TP-B21 | FR-S20 | **PASS** — watchdog recovered the stalled loop in **1.20 s**, no power cycle (budget 3 s). |
 | TP-B22 | FR-S21 | **PASS** — six post-reset state checks; see below. |
-| TP-B20 | FR-S39 | **PARTIAL — 13 of 20 cycles, no corruption.** See below. |
+| TP-B20 | FR-S39 | **ACCEPTED at 13 of 20 cycles**, no corruption. See below. |
 | TP-B35 | FR-S16, FR-MB23 | **PASS** — 10 000 cycles, 30009 unchanged, 30010 advanced by exactly 10 000. See below. |
 | TP-B24 | FR-S19 | **PASS** (partial scope) — bus never left the fail-safe bias across a real power cycle; peak 0.296 V. See below. |
 | TP-B33 | FR-MB28 | **PASS** — FC03/FC04 quantity 0 and 126, FC16 quantity 0 and byte-count mismatch: exception 03 each, nothing modified. |
@@ -466,9 +466,15 @@ DUT's reply, giving ~22 % duty and an expected ~3 genuine mid-write hits across
 conservative 10 000-cycle endurance budget on this board. Approved deliberately;
 a gentler test would have exercised almost nothing.
 
-**Status: PARTIAL.** The row asks for 20 cycles; 13 were performed. 30009 also
-picked up 1 CRC error across the run, consistent with power being removed
-part-way through a frame — expected, and not a fault.
+**Status: ACCEPTED at 13 of 20, by decision on 2026-09-01.** The remaining
+seven cycles were dropped deliberately, not overlooked: each costs ~200 flash
+writes and the run had already spent ~23 % of a conservative endurance budget on
+this prototype. The row should be re-run in full on the PCB, where the flash is
+not a hand-built board's. 30009 also picked up 1 CRC error across the run,
+consistent with power removed part-way through a frame — expected, not a fault.
+
+Bench left at the §2.8 defaults `[0, 1000, 10, 10000, 0, 1023]`, verified by
+read-back, with the release build running at address 40.
 
 **Three instrumentation bugs were found and fixed while running this row**, and
 none of them were the DUT:

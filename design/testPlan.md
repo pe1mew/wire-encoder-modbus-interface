@@ -260,7 +260,7 @@ than assume: the address, the register map and the build differ.
 | ID | Traces to | Procedure | Pass criterion |
 |---|---|---|---|
 | TP-B19 | FR-S39 | Write non-default values to all six persisted holdings. Power-cycle. Read back. | All six survive. 40007 (teach) reads **0** — deliberately not persisted. |
-| TP-B20 | FR-S39 | Repeat 20 power cycles, cutting power at random points including mid-write. | No corruption; the ping-pong store always yields a valid record. |
+| TP-B20 | FR-S39 | Repeat 20 power cycles, cutting power at random points including mid-write. | No corruption; the ping-pong store always yields a valid record. **ACCEPTED 2026-09-01 at 13 of 20 cycles** — no corruption in any, several with the cut landing mid-burst. The remaining 7 were dropped by decision, not overlooked: each cycle costs ~200 flash writes and the run had already spent ~23 % of a conservative endurance budget on this board. Re-run in full on the PCB, where the flash is not a prototype's. |
 | TP-B21 | FR-S20 | **`encoder_test` build.** Write magic `0xDEAD` to holding `0x00FF` to stall the loop. | IWDG resets the device within the FR-S20 timeout. |
 | TP-B22 | FR-S21 | After the TP-B21 reset, read all registers. | Defined state: holdings restored from flash, measurement registers at their pre-first-window values, status bits 0 and 1 set. |
 | TP-B23 | FR-S22 | Ramp the supply down slowly until PVD trips. | Device resets cleanly rather than executing at an undefined rail. |
