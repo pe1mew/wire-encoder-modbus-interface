@@ -40,7 +40,7 @@ That is not a wiring problem and no amount of bench work fixes it. It means:
 | | Rows | Status |
 |---|---|---|
 | **Group A** — electrical, no firmware | 9 | **Runnable now** |
-| **Group B** — protocol and lifecycle | 32 | **Runnable now**, on a flashed device |
+| **Group B** — protocol and lifecycle | 36 | **Runnable now**, on a flashed device (TP-B36 excepted — it needs a PCB) |
 | **Group C** — measurement, switches, teach | 26 | **Blocked** until integration stage D |
 | **Group D** — environmental | 5 | Needs a climate chamber |
 | **Group E** — build-time | 3 | Already automated in `software/hil/acceptance/` |
@@ -216,9 +216,9 @@ path.
 | ID | Traces to | Procedure | Pass criterion |
 |---|---|---|---|
 | TP-B01 | FR-S32 | Power on. Poll 30007 (identification). | Reports build byte `0x01` and the firmware version, identical with the jumper open and bridged. |
-| TP-B01b | FR-S01 | Confirm the running image is the release build, not `encoder_test`. | **Cannot be done from 30007** — `BUILD_TYPE` is `0x01` in *both* builds, so the identification register cannot tell them apart. Present workaround: holding `0x00FF` is readable on the test build and returns exception 02 on the release build. **Fix:** give `encoder_test` a distinct build byte (e.g. `0x81`) so FR-S32 answers this directly. |
+| TP-B01b | FR-S01, FR-S32 | Read 30007 and check the **high bit of the build byte**. | `0x01vv` = release image; `0x81vv` = a bench build carrying the FR-S20 hang hook. **Verified 2026-09-01**: `encoder` reports `0x0101`, `encoder_test` reports `0x8101`. The holding-`0x00FF` probe is retained as a cross-check, not as the primary means. |
+| TP-B36 | FR-S02 | Flash the release binary onto an **unmodified PCB** — no cuts, no bodge wires, no hand-fitted parts — and run the full §2/§3 acceptance suite. | The suite passes with no hardware modification. **BLOCKED: no PCB exists**; everything to date is a breadboard. This is what FR-S02 actually requires, and it went untested because TP-B03 cited it for boot timing instead. |
 | TP-B02 | FR-S03, FR-MB07 | Read the device at address 40 with JP6 open. Power down, bridge JP6, power up, read at 45. | Responds only at the expected address in each case. Changing the jumper while running has **no** effect until reset. |
-| ~~TP-B03~~ | — | ~~Time from power-on to first valid response.~~ **INVALID AS WRITTEN — there is no requirement to test.** FR-S02 says *"a single hardware PCB shall support the device without modification"*; it has nothing to do with boot timing and defines no budget. No boot-time requirement exists anywhere in the TDS. | **Nothing to verify.** Either add a requirement ("shall answer a valid request within N s of power-on") and reinstate the row against it, or delete the row. Until then, boot time may be *characterised* — a measured number with no pass/fail — and that characterisation is what TP-B24's capture yields anyway. |
 | TP-B04 | FR-S32 | Read 30007 across a power cycle. | Identical both times. |
 | TP-B05 | FR-S34 | Read 30008 (uptime) at intervals over 10 min. | Monotonic, whole seconds, starts at 0 after reset. |
 
@@ -329,15 +329,26 @@ show we know about them.
 
 ## 9. Known gaps in this plan
 
-- **FR-MB28's FC16 "quantity > 123" clause cannot be exercised.** An FC16 ADU is
-  `9 + 2N` bytes, so N = 123 gives 255 and N = 124 gives **257** — past the
-  256-byte Modbus RTU maximum. Every frame that breaks the ">123" clause also
-  breaks FR-MB24's length limit, and a device that discards it silently is
-  obeying FR-MB24 correctly. Measured 2026-09-01: the DUT does exactly that.
-  The clause is not wrong, merely unreachable; the reachable half of FR-MB28
-  (FC03/FC04 quantity 0 and >125, FC16 quantity 0, byte-count mismatch) all
-  return exception 03 as required. Decide whether to note the clause as
-  structurally unreachable in the TDS or drop it.
+**Three decisions taken 2026-09-01**, after the citation sweep:
+
+- **TP-B03 deleted.** It measured boot time against FR-S02, which is about a
+  single PCB supporting the device and defines no budget. No boot-time
+  requirement exists in the TDS, so the row had no pass criterion. Deleted
+  rather than left citing a requirement that says something else. *If a
+  boot-time limit is ever wanted, add the requirement first and write a new
+  row against it — the measurement is cheap once a scope channel is on the
+  3V3 rail.*
+- **FR-MB28's FC16 "quantity > 123" clause dropped from the TDS.** An FC16 ADU
+  is 9 + 2N bytes, so N = 124 is 257 bytes and exceeds the 256-byte RTU
+  maximum; every violating frame is caught by FR-MB24's length limit first,
+  making the clause structurally unverifiable. The firmware's own quantity
+  check is harmless and stays.
+- **`encoder_test` given build byte `0x81`** (FR-S32 amended). Both builds
+  reported `0x01` until now, so a device carrying the FR-S20 hang hook was
+  indistinguishable over the bus from a correct one. TP-B01b now checks the
+  high bit directly instead of inferring the image from a side effect.
+
+
 - ~~The raw-master scripts do not exist yet.~~ **Written 2026-09-01.**
   `software/hil/modbus_rtu_codec.py` (framing, CRC, 8N1 codec) is pure Python
   and passes 20/20 host tests; `software/hil/m2k_master.py` drives it from M2K

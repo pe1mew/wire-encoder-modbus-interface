@@ -25,11 +25,20 @@
  * @def BUILD_TYPE
  * @brief Build-type code — high byte of input register 30007 (FR-S32).
  *
- * 0x01 is the potentiometric draw-wire build, the only one that exists. The
- * byte is kept (rather than hard-coding 30007) so a future variant can claim a
- * distinct code without a master having to guess what it is talking to.
+ * 0x01 is the potentiometric draw-wire release build. The byte is kept (rather
+ * than hard-coding 30007) so a future variant can claim a distinct code without
+ * a master having to guess what it is talking to.
+ *
+ * @warning **The high bit means "not for release."** `[env:encoder_test]`
+ * overrides this to 0x81 so a bench image is identifiable over the bus. That
+ * image carries the FR-S20 hang hook — holding 0x00FF, magic 0xDEAD, which
+ * stops the main loop refreshing the watchdog — and until 2026-09-01 both
+ * builds reported 0x01, so a field device carrying it was indistinguishable
+ * from a correct one. Do not collapse this back to an unconditional define.
  */
+#ifndef BUILD_TYPE
 #define BUILD_TYPE 0x01
+#endif
 
 /**
  * @def WE_RAW_MAX_DEFAULT

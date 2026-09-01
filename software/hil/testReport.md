@@ -102,7 +102,7 @@ to *both active* stepped 50 mV where the topology requires it to roughly
 double. A model needing a new free parameter for every measurement is
 describing the wrong circuit — check the rig before refitting.
 
-### Group B — 72 checks pass, 0 fail
+### Group B — 74 checks pass, 0 fail
 
 Driven by [`group_b.py`](group_b.py) against the `encoder` build at unit 40.
 Holding registers are read as-found and restored with a single atomic FC16 in a
@@ -139,6 +139,7 @@ reported.
 | TP-B19 | FR-S39 | **PASS** — all six persisted holdings survived exactly; 40007 correctly did not. |
 | TP-B21 | FR-S20 | **PASS** — watchdog recovered the stalled loop in **1.20 s**, no power cycle (budget 3 s). |
 | TP-B22 | FR-S21 | **PASS** — six post-reset state checks; see below. |
+| TP-B01b | FR-S01, FR-S32 | **PASS** — `encoder` reports `0x0101`, `encoder_test` reports `0x8101`. The bench image is now identifiable over the bus. |
 | TP-B20 | FR-S39 | **ACCEPTED at 13 of 20 cycles**, no corruption. See below. |
 | TP-B35 | FR-S16, FR-MB23 | **PASS** — 10 000 cycles, 30009 unchanged, 30010 advanced by exactly 10 000. See below. |
 | TP-B24 | FR-S19 | **PASS** (partial scope) — bus never left the fail-safe bias across a real power cycle; peak 0.296 V. See below. |
@@ -491,23 +492,32 @@ none of them were the DUT:
    corrupt on that basis; the result was discarded, not counted against the
    device.
 
-### The test build is indistinguishable from the release build
+### The test build now identifies itself (fixed 2026-09-01)
 
-`platformio.ini` says of `encoder_test`: *"NEVER release this binary."* The only
-thing enforcing that is discipline. **`BUILD_TYPE` is `0x01` in both builds**, so
-30007 reads `0x0101` either way and a master — or an installer, or this test
-suite — cannot tell which image a device is running.
+`platformio.ini` says of `encoder_test`: *"NEVER release this binary."* Until
+now the only thing enforcing that was discipline — **`BUILD_TYPE` was `0x01` in
+both builds**, so 30007 read `0x0101` either way and a device carrying the
+FR-S20 hang hook (holding `0x00FF`, magic `0xDEAD`, which stops the main loop
+refreshing the watchdog) was indistinguishable over the bus from a correct one.
 
-It is detectable only by side effect: holding `0x00FF` is readable on the test
-build and returns exception 02 on the release build. This suite uses exactly
-that as a precondition, because "the watchdog never fired" and "this is the
-release build, which has no hang hook" produce identical silence otherwise.
+Fixed by decision on 2026-09-01: `sensors.h` guards `BUILD_TYPE` with `#ifndef`
+and `[env:encoder_test]` defines it as **`0x81`** — high bit meaning *not for
+release*. FR-S32 amended to make that normative.
 
-That is a workaround, not a fix. Giving `encoder_test` a distinct build byte
-(say `0x81`, high bit = not for release) would make FR-S32 answer the question
-directly. It needs `sensors.h` to guard `BUILD_TYPE` with `#ifndef` and the test
-environment to define it — a small change, deliberately **not** made here
-because it alters the FR-S32 register contract mid-test-run.
+**Verified on the bench, both directions:**
+
+| Image | 30007 | Holding `0x00FF` |
+|---|---|---|
+| `encoder_test` | **`0x8101`** | readable — hang hook present |
+| `encoder` | **`0x0101`** | exception 02 — hook absent |
+
+Release build size is unchanged at 3 704 B; the test build is 3 736 B.
+
+This also makes **TP-B01b verifiable by its own stated method**. Its criterion is
+FR-S01's "one release build only", and it previously checked that by reading
+30007 — which could not distinguish the images at all. The holding-`0x00FF`
+probe is kept as a cross-check but is no longer the primary means: inferring
+which firmware is running from a side effect is weaker than asking it.
 
 ### TP-B32 — DE timing, measured without the analyser
 
@@ -567,8 +577,6 @@ blocked on software:
 
 | Row | Traces to | Needs |
 |---|---|---|
-| TP-B03 | FR-S02 | power-on to first valid response |
-| TP-B20 | FR-S39 | 20 power cycles, some interrupted mid-write |
 | TP-B24 | FR-S18/S19 | bus capture from the instant of power-on — **the Saleae is now connected, so this is runnable** |
 | TP-B18 | §2.8, FR-MB09 | **PARTIAL** until a factory-reset procedure exists (plan §7) |
 
