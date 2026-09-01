@@ -14,6 +14,41 @@ holds measured evidence.
 
 ---
 
+### A silent DUT, then a "truncated" reply that was nothing of the kind (2026-08-08)
+**Problem**: The DUT answered nothing at all; then, once it answered, short
+replies decoded perfectly and long ones came back four bytes short. Both looked
+like the DUT misbehaving. Neither was.
+**Root cause**: Three separate faults, none in the firmware.
+1. **No RS-485 fail-safe bias.** Idle differential was **−0.011 V** where a
+   receiver needs ≥200 mV, so the DUT's RX input had no defined state and PD6
+   sat at space. A ~120 Ω termination was present and 20 kΩ bias could not pull
+   against it — `3.3 × RL/(40 000 + RL) = 0.011` gives RL ≈ 133 Ω, which is
+   what pointed at the termination.
+2. **A leading null byte.** DE and R̄Ē tied on the master means RO floats
+   during our own transmission; its enable transient decodes as one spurious
+   byte, shifting the whole frame.
+3. **The decoder, not the link.** `decode_uart` advanced a fixed ten bit times
+   per character. The CH32V003 transmits **0.8 % fast** (measured: 9.92 bit
+   times per character) — nothing across a 7-byte reply, a whole bit time
+   across a 35-byte one, at which point the stop-bit check fails and characters
+   are dropped.
+**Fix**: Bench — termination removed, bias 680 Ω, idle now +258 mV. Software —
+resync on every start edge as a real UART does, and hunt for the span that
+starts with the expected unit address *and* has a valid CRC instead of trusting
+the first byte received. Regression tests now cover a 35-byte frame at ±1 %
+baud, including the all-zeros case where the stop bit is the only edge to lock
+onto.
+**The number that settled it**: input register 30009, the DUT's own **CRC error
+count, read 0**. Every frame it received was well-formed, so the corruption
+could only be on the master's side. That was available before any of the
+guessing.
+**The tell, missed twice**: the capture held **61.8 ms of idle after the last
+edge**. A truncated capture cannot look like that. Length was assumed from the
+decoded byte count instead of measured from the samples — twice, once for each
+wrong theory.
+
+---
+
 ### An instrument's stale buffer accused the rig for an hour (2026-08-08)
 **Problem**: The M2K selftest reported that the master's RS-485 driver would
 not release the bus — `released` measured identical to `drive mark`. An hour
@@ -136,6 +171,30 @@ new categories. Snap new coordinates to the **1.27 mm** connection grid —
 off-grid endpoints do not connect and look identical to ones that do. And never
 edit while KiCad has the file open (check for `~*.lck`), or the next save
 discards the work.
+
+### Before blaming the far end, read the raw signal and the far end's own counters
+
+Promoted after the second bench session in which a fault in **our own
+measurement software** was attributed to the hardware — first an instrument's
+stale buffer, then a UART decoder that could not hold sync.
+
+Two cheap checks, both available before any theorising:
+
+- **Ask the DUT what it thinks happened.** The device counts its own CRC errors
+  and served requests (30009, 30010). A CRC error count of **0** while the
+  master sees garbage proves the corruption is on the master's side and ends
+  the argument in one read. Design registers like these in, and read them
+  *first*.
+- **Measure the signal, not somebody's decode of it.** Dump run-lengths and
+  edge positions before trusting any decoder — including a diagnostic you just
+  wrote, which can carry the same bug as the code under test. Here the run
+  lengths gave the answer directly (9.92 bit times per character) and the idle
+  tail (61.8 ms) disproved the truncation theory that two decoders had
+  independently suggested.
+
+Corollary: **a fault that scales with message length is a synchronisation
+fault.** If short frames work and long ones do not, stop looking for a
+truncation or a buffer limit and go measure the bit rate.
 
 ### When two measurements of the same thing disagree, that disagreement *is* the data
 

@@ -60,7 +60,7 @@ HOUSE_GAP_S = 0.005
 
 #: How long to listen after releasing the bus. Generous: a 15-register FC04
 #: response is 35 bytes ≈ 40 ms at 9600, plus turnaround.
-RESPONSE_WINDOW_S = 0.25
+RESPONSE_WINDOW_S = 0.12
 
 
 class M2kMaster:
@@ -226,11 +226,42 @@ class M2kMaster:
         buf += [self._word(1, 0)] * int(HOUSE_GAP_S * SAMPLE_RATE)  # release + t3.5
         self.dig.push(buf)
 
-    def _receive(self) -> bytes:
+    def _exchange(self, frame: bytes) -> bytes:
+        """Transmit and capture the reply, as one operation.
+
+        The capture is armed BEFORE the push. Capturing afterwards loses the
+        head or the tail of the reply depending on how long push() blocks:
+        with a capture started after the fact, a 15-register response came back
+        truncated four bytes early while a 1-register one survived, which reads
+        like a protocol fault and is not one.
+        """
         n = int(RESPONSE_WINDOW_S * SAMPLE_RATE)
-        raw = self.dig.getSamples(n)
+        self.dig.startAcquisition(n)
+        try:
+            self._transmit(frame)
+            raw = self.dig.getSamples(n)
+        finally:
+            self.dig.stopAcquisition()
         line = [(w >> DIO_RX) & 1 for w in raw]
         return codec.decode_uart(line, SAMPLES_PER_BIT)
+
+    @staticmethod
+    def _extract(data: bytes, unit: int) -> bytes:
+        """Pick a well-formed frame out of a decoded byte stream.
+
+        Needed because the receiver is enabled by the same signal that stops
+        the driver, so RO's enable transient regularly decodes as a leading
+        null. Rather than blindly stripping a byte, find the span that starts
+        with our unit address and carries a valid CRC — that also survives
+        trailing noise and another node's traffic on a shared bus.
+        """
+        for start in range(len(data)):
+            if data[start] != unit:
+                continue
+            for end in range(start + 4, len(data) + 1):
+                if codec.crc_ok(data[start:end]):
+                    return data[start:end]
+        return data          # nothing valid — hand it all back for the error
 
     def transact(self, request: bytes, unit: int, function: int,
                  retry_on_crc: bool = True) -> list[int]:
@@ -243,11 +274,12 @@ class M2kMaster:
         attempts = 2 if retry_on_crc else 1
         last: Exception | None = None
         for attempt in range(attempts):
-            self._transmit(request)
-            reply = self._receive()
+            raw = self._exchange(request)
+            reply = self._extract(raw, unit)
             if self.verbose:
                 print(f"    -> {request.hex(' ')}")
-                print(f"    <- {reply.hex(' ') or '(silence)'}")
+                print(f"    <- {reply.hex(' ') or '(silence)'}"
+                      + (f"   [from {raw.hex(' ')}]" if raw != reply else ""))
             try:
                 return codec.parse_response(reply, unit, function)
             except codec.ModbusError as e:
@@ -281,8 +313,7 @@ class M2kMaster:
         For the negative rows: deliberately bad CRC (TP-B12), unknown register
         (TP-B13), frames for another unit (TP-B11).
         """
-        self._transmit(frame)
-        return self._receive()
+        return self._exchange(frame)
 
 
 def main() -> int:

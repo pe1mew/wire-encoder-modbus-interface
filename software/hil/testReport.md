@@ -13,7 +13,7 @@ and verdict.
 
 ---
 
-## Status: Group A opened, 2 rows executed
+## Status: Group A opened, 2 rows executed, Modbus link up
 
 Hardware exists and has been exercised. What follows is what was actually
 run — everything else in the plan is still untouched.
@@ -27,6 +27,58 @@ run — everything else in the plan is still untouched.
 | **TP-A00** | 2026-08-08 | **PASS, on the fourth attempt.** −20 mV with both sensor outputs disconnected. It failed three times first, and each failure was a real fault it was written to catch: **R10 still fitted**, **R5 floating**, a third wiring error, and finally **the MCU's internal pull-up on PC4** (~47 kΩ to 3V3, sourcing ~63 µA into the summing node) left enabled by the image previously in flash. |
 | **TP-A02** | 2026-08-08 | **PASS.** Bands at `Von` = 23.09 V: **−0.019 V / 1.291 V / 2.210 V** = **0 / 401 / 686 counts**. `Von` confirmed by three independent routes agreeing to **0.2 %** — each switch alone, and both together (which carries no leakage term). Rail 24.1 V. |
 | **TP-A01** | 2026-08-08 | **WITHDRAWN.** Written to characterise a 33 µA sensor leakage that turned out not to exist — it was the PC4 pull-up. Connecting or disconnecting both sensors moves PC4 by 0.9 mV. |
+| — | 2026-08-08 | **First Modbus transaction.** DUT answered at unit 40, 9600 8N1. `30007 = 0x0101` (build `0x01`, firmware 1) and a full 15-register FC04 read. See below. |
+
+### Modbus link brought up
+
+Three faults stood between a correctly flashed DUT and a first reply. Only the
+first was on the DUT's side of the wire, and none of them was the DUT.
+
+1. **No fail-safe bias — the receiver had no defined idle state.** The DUT's
+   `served`, `crc_errors` and `rx_len` counters all read 0 after ten frames,
+   and `GPIOD_IDR = 0xB2` put **PD6 low** — the RX line sitting at space, not
+   idle mark. Idle differential measured **−0.011 V** against the ≥200 mV a
+   receiver needs to resolve. Forcing DE high proved the DUT's transceiver
+   drove the bus correctly, so the fault was the bias network, not the part.
+   Arithmetic located it: `3.3 × RL/(40 000 + RL) = 0.011` gives RL ≈ 133 Ω,
+   i.e. a ~120 Ω termination the 20 kΩ bias pair could not pull against.
+   **Fix (bench):** termination removed, bias changed to 680 Ω. Idle
+   differential is now **+258 mV** and the master selftest passes all three
+   checks.
+2. **A leading null on every reply.** With DE and R̄Ē tied on the raw master,
+   RO floats while we transmit and its enable transient decodes as one spurious
+   byte. Cured in software: the master now hunts for the span that starts with
+   the expected unit address *and* carries a valid CRC, rather than assuming
+   the first byte received is the first byte of the response.
+3. **Long replies lost characters; short ones did not.** A 7-byte
+   identification reply decoded perfectly while a 35-byte register read came
+   back four bytes short — which reads as a truncated response and is not one.
+   The capture held **61.8 ms of idle after the last edge**, so nothing was
+   truncated. Run-length measurement on the RX line showed **9.92 bit times per
+   character**: the DUT transmits **0.8 % fast**, well inside UART tolerance.
+   The decoder was at fault — it advanced a fixed ten bit times per character
+   instead of resynchronising on each start edge, so the error accumulated to a
+   whole bit time across a long frame. Now resyncs per character; regression
+   tests cover a 35-byte frame at ±1 % baud, including the all-zeros case where
+   the stop bit is the only edge to lock to.
+
+**Measured:** DUT UART **0.8 % fast** at 9600 (9.92 bit times per character,
+960 kSa/s capture). Evidence for FR-MB20 when TP-B15 runs.
+
+**First full read**, unit 40, FC04, 15 registers:
+
+| Register | Value | Reading |
+|---|---|---|
+| 30006 status | `0x0013` | bits 0+1 (no window published yet) and bit 4 (switch fail-safe until the first ladder sample) — all three correct for integration stage D being absent |
+| 30007 identification | `0x0101` | build `0x01`, firmware 1 — matches `platformio.ini` and FR-S32 |
+| 30008 uptime | 42 588 s | 11 h 49 m, powered since the flash |
+| **30009 CRC errors** | **0** | **every frame the DUT received was well-formed** |
+| 30010 served | 10 | our transactions, all answered |
+| 30011 reading age | 42 588 s | nothing ever published — stage D, as expected |
+| 30001–30005, 30012 | 0 | no measurement path yet |
+
+The zero CRC-error count is the load-bearing number: it says the DUT's receive
+path was correct throughout, and every symptom above was on the master's side.
 
 ### What TP-A02 established
 
@@ -50,8 +102,10 @@ describing the wrong circuit — check the rig before refitting.
 
 ### Not yet run
 
-Group A rows TP-A03…A09, all of Group B (needs the M2K raw-master scripts,
-which do not exist), all of Group C (blocked on integration stage D).
+Group A rows TP-A03…A09; all of Group C (blocked on integration stage D).
+Group B is now **unblocked** — the raw master exists and the DUT answers it.
+TP-A03 stays **BLOCKED**: no adjustable supply on this bench, so the ±15 %
+margin (60 counts, the tightest number in the design) remains calculated.
 
 ---
 

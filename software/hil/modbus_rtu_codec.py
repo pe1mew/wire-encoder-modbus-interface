@@ -141,17 +141,30 @@ def encode_uart(data: bytes, samples_per_bit: int,
 def decode_uart(samples: list[int], samples_per_bit: int) -> bytes:
     """Recover bytes from a sample stream, sampling each bit at its midpoint.
 
-    Scans for start bits rather than assuming alignment, so it tolerates a
-    capture that begins part-way through a frame — which is what happens when
-    the capture is armed after the transmission has already started.
+    Resynchronises on the falling edge of **every** start bit, as a real UART
+    receiver does. Advancing a fixed ten bit times per character instead looks
+    correct and works on short frames, but lets any baud difference accumulate:
+    the CH32V003 transmits 0.8 % fast (measured 9.92 bit times per character on
+    2026-08-08), which is nothing across a 7-byte reply and a whole bit time
+    across a 35-byte one. The long frames then lost characters to framing
+    errors while the short ones decoded perfectly — a failure that reads like a
+    truncated response and is not one.
+
+    Tolerates a capture that begins part-way through a frame; that character is
+    lost and the next start edge recovers alignment.
     """
     out = bytearray()
     i, n, half = 0, len(samples), samples_per_bit // 2
     while i < n:
-        if samples[i] != 0:                 # hunt for a start bit
+        # A start bit is a FALLING edge, not merely a low sample. Requiring the
+        # edge stops the hunt from locking onto the middle of a long low run.
+        if samples[i] != 0 or (i and samples[i - 1] != 1):
             i += 1
             continue
-        if i + 10 * samples_per_bit > n:    # not a whole character left
+        # Bound by the last sample actually read — the stop-bit midpoint at 9.5
+        # bit times, not a full 10. Demanding 10 discards the final character of
+        # any frame from a fast transmitter that is not followed by idle.
+        if i + 9 * samples_per_bit + half >= n:
             break
         if samples[i + half] != 0:          # glitch, not a start bit
             i += 1
@@ -160,12 +173,16 @@ def decode_uart(samples: list[int], samples_per_bit: int) -> bytes:
         for bit in range(8):
             centre = i + (bit + 1) * samples_per_bit + half
             byte |= (samples[centre] & 1) << bit
-        stop = samples[i + 9 * samples_per_bit + half]
-        if stop != 1:                       # framing error — resync
+        if samples[i + 9 * samples_per_bit + half] != 1:   # framing error
             i += 1
             continue
         out.append(byte)
-        i += 10 * samples_per_bit
+        # Land in the middle of the stop bit and hunt forward for the next
+        # falling edge. Nominal mid-stop is 9.5 bit times in, and the real stop
+        # bit spans 9r..10r for a baud ratio r, so this holds alignment for
+        # r in 0.95..1.055 — the usual +/-5 % UART tolerance, per character
+        # rather than per frame.
+        i += 9 * samples_per_bit + half
     return bytes(out)
 
 

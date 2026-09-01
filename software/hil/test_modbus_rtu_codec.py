@@ -123,6 +123,22 @@ random.seed(7)
 blob = bytes(random.randrange(256) for _ in range(64))
 check("UART round-trip, 64 random bytes",
       m.decode_uart(m.encode_uart(blob, 16, idle_before=5), 16), blob)
+# Baud tolerance over a LONG frame. This is the test that was missing: the
+# decoder used to advance a fixed ten bit times per character, which survives a
+# 7-byte reply at 1 % baud error and loses characters from a 35-byte one. The
+# CH32V003's HSI-derived UART measured 0.8 % fast on the bench, so the DUT's
+# short replies decoded and its long ones did not.
+long_frame = bytes(range(35))
+for spb_dut, label in ((99, "1 % fast"), (101, "1 % slow")):
+    check(f"35-byte frame from a transmitter {label} decodes whole",
+          m.decode_uart(m.encode_uart(long_frame, spb_dut, idle_before=200), 100),
+          long_frame)
+# An all-zeros payload is the hard case: nine consecutive low bit times per
+# character means the only edge to resync on is the stop bit.
+check("35 zero bytes (longest low runs) from a 1 % fast transmitter",
+      m.decode_uart(m.encode_uart(bytes(35), 99, idle_before=200), 100),
+      bytes(35))
+
 # A capture that begins part-way through a character mis-frames once and then
 # resyncs — exactly what a real UART receiver does. Expecting perfect recovery
 # would be expecting something no receiver can deliver.
