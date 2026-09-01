@@ -101,7 +101,7 @@ to *both active* stepped 50 mV where the topology requires it to roughly
 double. A model needing a new free parameter for every measurement is
 describing the wrong circuit — check the rig before refitting.
 
-### Group B — 35 checks pass, 0 fail
+### Group B — 58 checks pass, 0 fail
 
 Driven by [`group_b.py`](group_b.py) against the `encoder` build at unit 40.
 Holding registers are read as-found and restored with a single atomic FC16 in a
@@ -133,6 +133,11 @@ reported.
 | TP-B14 | FR-MB20 | **PASS** — n=1000, median **4.08 ms**, max **4.14 ms** against a 100 ms limit. See below. |
 | TP-B29 | FR-MB21 | **PASS** — **100 %** within 15 ms, where 95 % is required. |
 | TP-B05 | FR-S34 | **PASS** — monotonic over 10 min, 605 s counted in 606 s (0.18 %). |
+| TP-B02 | FR-S03, FR-MB05, FR-MB07 | **PASS** — bridged: answers at 45, silent at 40. Moved back to open while running: **no effect until reset**. |
+| TP-B04 | FR-S32 | **PASS** — 30007 identical across a real power cycle. |
+| TP-B19 | FR-S39 | **PASS** — all six persisted holdings survived exactly; 40007 correctly did not. |
+| TP-B21 | FR-S20 | **PASS** — watchdog recovered the stalled loop in **1.20 s**, no power cycle (budget 3 s). |
+| TP-B22 | FR-S21 | **PASS** — six post-reset state checks; see below. |
 | TP-B32 | FR-MB04 | **PASS** — DE asserted 3–82 µs before the first start bit, released 3–6 µs after the last stop bit, against a 1 146 µs budget. See below. |
 
 **TP-B18 is PARTIAL, and the reason is easy to miss.** The registers read
@@ -234,6 +239,120 @@ Two further failures in the first run were an arithmetic error of mine, not the
 DUT: exactly **one** served request falls between two consecutive counter reads,
 and the code subtracted that increment twice.
 
+### TP-B21 / TP-B22 — watchdog recovery and the state after it
+
+Flashed `encoder_test` (`Verified OK`), ran the row, reflashed `encoder`
+(`Verified OK`) and confirmed the hook was gone before continuing.
+
+**TP-B21 (FR-S20) — PASS.** Writing magic `0xDEAD` to holding `0x00FF` stopped
+the main loop refreshing the IWDG. The write itself was answered; the device
+then went silent and **answered a valid FC04 again 1.20 s later, with no power
+cycle**, against FR-S20's 3 s budget. The 1.20 s includes this script's ~0.15 s
+poll granularity, so the true IWDG period is at or under that and inside
+FR-S20's 100 ms–2 s window.
+
+The row first proves the device actually *stopped* answering. Without that, a
+watchdog that never fired and a device that never hung are indistinguishable,
+and the row would pass while testing nothing.
+
+**TP-B22 (FR-S21) — PASS**, six checks after that reset:
+
+| Check | Result |
+|---|---|
+| Uptime restarted (32 s → **0 s**) — a real reset, not a stall that cleared | PASS |
+| Holdings restored to persisted values `[0, 1000, 10, 10000, 0, 1023]` | PASS |
+| 40007 (teach) reads 0 — deliberately not persisted | PASS |
+| Measurement registers 30001–30005 cleared | PASS |
+| Status bit 0 set (first window incomplete) | PASS |
+| Status bit 1 set (average not filled) | PASS |
+
+### TP-B04 / TP-B19 — across a real power cycle
+
+Driven by [`power_cycle.py`](power_cycle.py): it writes probe values, the
+operator removes power, and it judges the read-back against what it actually
+wrote rather than against what anyone remembers.
+
+The probe values `[1234, 2500, 30, 8888, 200, 900]` differ from the §2.8
+defaults in **every** register. That is deliberate: with any register left at
+its default, "the value survived" and "the value was lost and came back as a
+default" are the same reading.
+
+| Check | Result |
+|---|---|
+| All six persisted holdings survived | **PASS** — exact match |
+| 40007 (teach) reads 0 — not persisted | **PASS** |
+| 30007 identical across the cycle (FR-S32) | **PASS** — `0x0101` both sides |
+| Uptime 80 s → **15 s** | power really was removed; this is a cold boot, not another watchdog reset |
+| 30001–30005 clear, status `0x0013` with bits 0 and 1 set (FR-S21) | **PASS** |
+
+FR-S21 is now demonstrated after **both** reset causes that the bench can
+produce — the watchdog (TP-B21) and a true power-on. The two are not the same
+path through the firmware, and passing one does not imply the other.
+
+**TP-B20 is NOT covered by this.** It asks for 20 cycles, some interrupted
+mid-write, which is a different question: not "does the store survive a clean
+cycle" but "can the ping-pong store be caught in a torn write". One clean cycle
+says nothing about that.
+
+### TP-B02 — the address jumper
+
+With **JP6 bridged** and a power cycle:
+
+| Check | Result |
+|---|---|
+| Answers at **45** — `30007 = 0x0101` | **PASS** (FR-S03) |
+| **Silent at 40**, the old address | **PASS** (FR-MB05) |
+
+The second row carries the weight. A device that answered at both addresses
+would sail through a test that only checked the new one.
+
+**Persistence survived a second cycle, at the new address:** holdings still
+`[1234, 2500, 30, 8888, 200, 900]`, 40007 still 0. FR-S39 now holds across two
+independent power cycles rather than one.
+
+**FR-S35's power-on reset is confirmed — and only a power cycle could show it.**
+After the boot, `30009 = 0` and `30010 = 2` (our own two reads). The requirement
+says both counters reset to 0 at power-on; TP-B16 verified they *count*
+correctly but could not verify they *start* at zero.
+
+**FR-MB07's latch clause — PASS.** With the device still powered, JP6 was moved
+back to **open** (which selects address 40). It kept answering at **45** and
+stayed silent at **40**. Uptime read 72 s against 25 s before the move,
+confirming continuity: no reset intervened, so the address really is latched at
+startup and there is no live re-read.
+
+That is the clause that would catch out an installer who moved the jumper on a
+live bus and assumed it had taken effect. Testing only the bridged case would
+have missed it entirely.
+
+**And the change did take at the next reset — PASS.** After a power cycle with
+JP6 open the device answers at **40** and is silent at **45**. The full cycle is
+therefore closed in both directions: bridged→45, open→40, and neither takes
+effect until reset.
+
+**FR-S39 across three independent power cycles.** The probe values survived all
+three, and `30009`/`30010` came back 0 and 2 (our own reads) after each boot, so
+FR-S35's reset-to-zero is confirmed repeatedly rather than once. Defaults were
+restored afterwards and the restore verified by read-back.
+
+### The test build is indistinguishable from the release build
+
+`platformio.ini` says of `encoder_test`: *"NEVER release this binary."* The only
+thing enforcing that is discipline. **`BUILD_TYPE` is `0x01` in both builds**, so
+30007 reads `0x0101` either way and a master — or an installer, or this test
+suite — cannot tell which image a device is running.
+
+It is detectable only by side effect: holding `0x00FF` is readable on the test
+build and returns exception 02 on the release build. This suite uses exactly
+that as a precondition, because "the watchdog never fired" and "this is the
+release build, which has no hang hook" produce identical silence otherwise.
+
+That is a workaround, not a fix. Giving `encoder_test` a distinct build byte
+(say `0x81`, high bit = not for release) would make FR-S32 answer the question
+directly. It needs `sensors.h` to guard `BUILD_TYPE` with `#ifndef` and the test
+environment to define it — a small change, deliberately **not** made here
+because it alters the FR-S32 register contract mid-test-run.
+
 ### TP-B32 — DE timing, measured without the analyser
 
 **PASS**, n = 10. FR-MB04 allows one character time (11 bits = **1 146 µs**) on
@@ -292,13 +411,8 @@ blocked on software:
 
 | Row | Traces to | Needs |
 |---|---|---|
-| TP-B02 | FR-S03, FR-MB07 | JP6 open then bridged, power cycle between |
 | TP-B03 | FR-S02 | power-on to first valid response |
-| TP-B04 | FR-S32 | 30007 across a power cycle |
-| TP-B19 | FR-S39 | holdings survive a power cycle |
 | TP-B20 | FR-S39 | 20 power cycles, some interrupted mid-write |
-| TP-B21 | FR-S20 | the `encoder_test` build, magic `0xDEAD` to holding 0x00FF |
-| TP-B22 | FR-S21 | register state after that watchdog reset |
 | TP-B24 | FR-S18/S19 | bus capture from the instant of power-on — **the Saleae is now connected, so this is runnable** |
 | TP-B18 | §2.8, FR-MB09 | **PARTIAL** until a factory-reset procedure exists (plan §7) |
 
