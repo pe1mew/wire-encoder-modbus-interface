@@ -492,6 +492,63 @@ none of them were the DUT:
    corrupt on that basis; the result was discarded, not counted against the
    device.
 
+### FR-E18 / FR-E19 — the teach handshake, 7 pass 0 fail
+
+Newly runnable once both stops became reachable. Every clause of FR-E19, in
+order:
+
+| Clause | Result |
+|---|---|
+| (a) arm | **PASS** — 40007 = 1 sets status bit 5 |
+| (a) stale captures discarded | **PASS** — reading pre-existing 30013/30014 (22, 910) after arming committed **nothing** |
+| (b) capture at each stop | **PASS** — 2 entries, closed at rate −919, open at +890 |
+| (c) commit **waits** for the master | **PASS** — bit 5 still set after both captures, before they were read |
+| (c) commit | **PASS** — 40005 = 56, 40006 = 834, bit 5 clear, 40007 reset to 0 |
+| FR-E18 direction | **PASS** — the closed end took the lower code (56 < 834) |
+| (d) abort | **PASS** — 40007 = 0 clears bit 5, calibration untouched |
+
+**The poll is deliberately narrowed to 30001–30012.** `regs.c` sets the
+"master has read it" flag *inside* the register read, so a routine 15-register
+block poll satisfies clause (c) continuously and the commit fires the moment
+both endpoints are captured. The waiting half of the handshake would never be
+observed and the row would pass while testing nothing.
+
+**The stale-capture guard is asserted, not assumed.** 30013/30014 keep their
+values across arming by design — they are diagnostics, and it is the internal
+capture flags that arming clears. The firmware comment says *"a stale capture
+from an earlier session can never be committed"*; reading two plausible stale
+numbers after arming and observing no commit is what turns that into evidence.
+
+**NOT covered:** FR-E19's refusal to commit a pair violating FR-E06's 64-count
+minimum span. The rig traverses the full ADC range and cannot present two stops
+that close together.
+
+### A rig finding: the closed-end switch does not hold through the limit
+
+The taught endpoints are **raw 56 and 834**. The wiper traverses **0 to 1022**.
+So the carriage runs roughly 250 counts past each switch's actuation point —
+and at the closed end it passes out the far side of the sensing zone:
+
+| Source | Evidence |
+|---|---|
+| Teach log | `AT STOP` at raw ≈56 (t = 26.5 s), then **"left the stop" at raw 0** (t = 30.2 s) as the carriage continued to the mechanical limit |
+| Movement log | At raw 0, **stationary**, status went `0x0008` → `0x0000` across 20 s — the switch released with nothing moving |
+
+This is **EM-M05**: *"each switch shall stay continuously active from its
+actuation point to the mechanical limit."* It is a property of the rig, not the
+firmware — but it matters to the product, because **bit 3 reads "not at a stop"
+with the window fully closed**, which is exactly when a master most needs it.
+
+Two consequences worth acting on:
+
+- **FR-E14 was verified against this rig.** Its pass stands — bit 3 did set at a
+  stop and clear on leaving one — but "at a stop" was observed at the *switch*,
+  not at the mechanical limit, and the two are ~25 mm apart here.
+- **The taught calibration is narrower than the travel.** Committing 56/834
+  would make the mechanical extremes fall outside the calibrated span and clamp
+  (as Group C's clamp cases showed). Moving each sensor so it stays active from
+  actuation to limit fixes both problems at once.
+
 ### The window emulator arrived — four movement rows closed
 
 The rig from [`design/windowEmulator.md`](../../design/windowEmulator.md) is
