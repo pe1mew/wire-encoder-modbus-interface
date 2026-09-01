@@ -11,9 +11,13 @@
  * *timer*. It produces a raw code and says whether that one sample is
  * trustworthy; every policy above that lives in `meas_open.c` and `regs.c`.
  *
- * @note Zero-ISR. A wiper sample costs ~150 µs and a switch sample ~100 µs,
- *       both far inside the FR-MB20 response budget (100 ms) and the FR-MB21
- *       preference (15 ms).
+ * @warning **Blocking budget: one Modbus character, 1.146 ms.** The Modbus
+ *          receiver is polled from the same loop against a single-byte USART
+ *          register, so a longer pass loses a byte and FR-MB24 discards the
+ *          frame. Measured costs: a conversion is ~14 us (73-cycle sample at
+ *          6 MHz), so we_switch_sample is ~224 us and we_sample is ~552 us
+ *          (two 150 us settles plus 18 conversions). Both fit; adding work to
+ *          either needs this arithmetic redone, not a guess.
  */
 #include "ch32fun.h"
 #include "we.h"
@@ -61,11 +65,19 @@
  */
 #define WE_PULL_SPREAD_FAULT 600u
 
-/* C6 (1 nF) against the ~10-40 kOhm the pull presents gives tau ~10-40 us.
- * 500 us is >12 tau at the slow end. This runs twice per wiper sample and is
- * the dominant cost of we_sample(); it is still a millisecond of a 100 ms
- * budget. */
-#define WE_PULL_SETTLE_US 500
+/* C6 (1 nF) against the pull gives tau = 40 us in the worst case (an OPEN
+ * wiper, where C6 charges through the ~40 kOhm pull alone; a connected one is
+ * ~9.5 us because the source dominates). 150 us is 3.75 tau, 97.6 % settled —
+ * ample to tell a ~1023-count swing from a ~242-count one.
+ *
+ * IT IS NOT ARBITRARY, AND IT IS NOT FREE TO INCREASE. The Modbus receiver is
+ * POLLED from the main loop against a single-byte USART register, so any pass
+ * that blocks for a whole character time (11 bits / 9600 = 1.146 ms) loses a
+ * byte to overrun, and FR-MB24 then discards the frame. An earlier 500 us made
+ * we_sample() ~1.25 ms on its own and the DUT silently dropped 9.7 % of
+ * requests — with 30009 unmoved, because an overrun is not a CRC error. Keep
+ * the whole call well inside one character time. */
+#define WE_PULL_SETTLE_US 150
 
 static bool we_ready;             /**< we_init() has run and calibrated */
 

@@ -5,7 +5,7 @@
 | Document | Product-firmware integration plan and results |
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
-| Status | **Stages A–C complete** (skeleton, board bring-up, register image + persistence — all carried over and building). **Stage D onward not started** — blocked on the phase-1 encoder driver. |
+| Status | **Stages A–D complete** (skeleton, board bring-up, register image + persistence, and now the phase-1 encoder driver `we.c` plus the measurement service `meas_open.c`). **Stage E — the averaging engine — not started**: 30002/30003/30004 do not update and status bit 1 stays set. |
 | Related docs | `design/TDS.md` v0.3, `design/softwareArchitecture.md`, `design/driverDevelopment.md`, `software/hil/README.md` |
 
 ## 1. Purpose
@@ -74,7 +74,7 @@ measurement service.
 across the whole map and persist holding writes across a reset. **Not yet
 executed on hardware** — no board.
 
-### Stage D — measurement service — **NOT STARTED**
+### Stage D — measurement service — **DONE 2026-09-01**
 
 Blocked on the phase-1 driver. Adds `meas_open.c`: window pacing from
 40002, `we_sample()` per window, FR-E04 scaling with clamping, the FR-E07

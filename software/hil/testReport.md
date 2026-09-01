@@ -492,6 +492,84 @@ none of them were the DUT:
    corrupt on that basis; the result was discarded, not counted against the
    device.
 
+### Integration stage D — measurement service live
+
+`we.c` (ADC driver) and `meas_open.c` (window pacing, scaling, publication) are
+written and wired into `main.c`'s two FR-S18 slots. **30001, 30005, 30012 and
+30015 now update**; status bit 0 clears when a window completes. Flash 5 292 B,
+RAM 688 B, both inside the NFR-RES01 ceilings.
+
+| Check | Requirement | Result |
+|---|---|---|
+| Wiper stability | FR-E03/E13 | 30005 span **0 LSB** over 60 reads (criterion ≤3), median 679 |
+| Wiper integrity | FR-E07 | status bit 2 clear — the pull-toggle test trusts the front-end on real hardware |
+| Window abort | FR-S30 | writing 40002 re-asserts status bit 0, both cases |
+| Publish cadence | FR-E02 | 40002 = 3000 ms → window closed at **3203 ms**; 700 ms → **797 ms** (poll granularity ~110 ms) |
+
+The 0-LSB span is the 16-conversion mean with min/max rejection doing its job;
+FR-E03's criterion allows 3.
+
+### Stage D broke the Modbus link, and the DUT's own counters said how
+
+The first stage D build **silently dropped 9.7 % of requests** — 271 served of
+300 — with **30009 unmoved**. That combination is diagnostic: frames were not
+being mis-received, they were not being *seen*.
+
+`mb_rx_service` polls a **single-byte USART register** from the main loop, and
+FR-MB24 discards a frame on overrun. So **any main-loop pass longer than one
+character time (11 bits / 9600 = 1.146 ms) loses a byte** — and an overrun is
+not a CRC error, so the counter that would normally shout stays silent.
+
+Measured costs at 6 MHz ADC clock, 73-cycle sample: a conversion is ~14 µs, so
+`we_switch_sample` is ~224 µs and `we_sample` ~552 µs. The broken build had two
+500 µs FR-E07 pull settles (~1.25 ms for `we_sample` alone) **and** ran both
+samples in the same pass — ~1.48 ms, comfortably over budget.
+
+Two fixes, both derived rather than guessed:
+
+- **Settle 500 µs → 150 µs.** The worst case is an open wiper, where C6 (1 nF)
+  charges through the ~40 kΩ pull alone: τ = 40 µs, so 150 µs is 3.75 τ, 97.6 %
+  settled — ample to tell a ~1023-count swing from a ~242-count one.
+- **The wiper and the divider now sample on alternate ticks** at 40 Hz, giving
+  each 20 Hz (twice FR-E14's floor) while no pass ever pays for both.
+
+| | Before stage D | Stage D (broken) | Stage D (fixed) |
+|---|---|---|---|
+| Requests served | 10 000 / 10 000 | **271 / 300** | **500 / 500** |
+| Latency median | 4.08 ms | 4.08 ms | 4.08 ms |
+| Latency max | 4.14 ms | 5.89 ms | 4.74 ms |
+
+**The blocking budget was nowhere in the design documents.** It is a hard
+consequence of a polled receiver on a one-byte register, it is invisible until
+something exceeds it, and exceeding it produces silent frame loss rather than an
+error count. It is now stated in both `we.c` and `meas_open.c`, with the
+arithmetic, so the next person to add work to that loop has to redo the sum
+rather than guess.
+
+### The Saleae independently confirmed the transport
+
+Logic 2's own Async Serial analyzer, on the same bus, over 13 transactions:
+
+- **13 of 13 DUT responses verified by an independent CRC check**, byte-exact
+  `28 04 02 01 01 24 a6` → register `0x0101`. A different tool and a different
+  decoder agree with `modbus_rtu_codec.py` completely.
+- **Every transaction carried exactly one spurious `0x00`, flagged by the
+  analyzer as a FRAMING ERROR.** That is independent confirmation of the RO
+  enable-transient diagnosed from the M2K alone, and the reason `_extract` hunts
+  for a valid frame instead of trusting the first byte received.
+
+**Caveat: the capture holds only the DUT's responses, not the master's
+requests.** The `0x00` sits 13 ms before each response — exactly where the
+master's frame starts — so the analyzer sees the beginning of our transmission
+and cannot decode the rest. Consistent with the threshold problem below. The
+DUT-side result stands on its own; the master-side capture does not.
+
+**The Logic16 voltage range still cannot be set through the MCP bridge**, after
+a full Logic 2 and Claude Code restart: `digitalThresholdVolts` accepts only
+1.2/1.8/3.3 at the schema and the backend rejects all three, wanting a range
+(`1.8V to 3.6V` / `3.6V to 5.0V`). Omitting it starts a capture that works for
+the strongly-driven DUT signal and not for ours.
+
 ### The test build now identifies itself (fixed 2026-09-01)
 
 `platformio.ini` says of `encoder_test`: *"NEVER release this binary."* Until
