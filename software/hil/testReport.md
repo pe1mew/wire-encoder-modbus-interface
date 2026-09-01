@@ -509,6 +509,44 @@ RAM 688 B, both inside the NFR-RES01 ceilings.
 The 0-LSB span is the 16-conversion mean with min/max rejection doing its job;
 FR-E03's criterion allows 3.
 
+### FR-E07 — the wiper fault machine, both directions
+
+**PASS**, measured across real transitions with the wiper physically
+disconnected and reconnected:
+
+| | Observed |
+|---|---|
+| Reconnect | bit 2 **clears**, 30001 returns to 6647, 30011 resets to 0 |
+| Disconnect | 30001–30004 → **65535**, bit 2 **set**, 30011 = **3 s** |
+| Budget | 3.4 s = 2 s timer + two 200 ms windows + 1 s of 30011 granularity |
+| 30005 through the fault | holds **679/681**, the last code the front-end produced |
+
+**It recovers.** A fault machine that latched permanently would be
+indistinguishable from this one in steady state, and only the reconnect
+distinguishes them.
+
+**The number is coherent, not merely inside a limit.** At a 1000 ms window the
+same measurement read 4 s; at 200 ms it reads 3 s. The ~1 s difference is
+exactly the window granularity, so the figure decomposes as the specified 2 s
+timer, plus the windows that must close around it, plus 30011's whole-second
+reporting. A figure that could not be accounted for that way would not have been
+accepted.
+
+**The hold is invisible by design, and that broke two of my tests first.**
+FR-E07 sets bit 2 only *after* the 2 s expires, so while the last opening is
+being held the registers look exactly like healthy operation. The first version
+of this row hunted for "bit 2 set but 30001 not yet the sentinel" — a state the
+requirement forbids — and reported INCONCLUSIVE. The second treated its own
+first poll as a transition, so a device that was already faulted when polling
+began had its settled state timed as a hold and produced a meaningless "18 s
+FAIL". The instrument that actually works is **30011**, whose whole job is
+counting time since the last valid reading.
+
+**Not covered:** FR-E07 also claims a *shorted* wiper is detectable. It is not —
+a field short sits on the far side of R11, so PA2 sees 10 kΩ to the rail, which
+is electrically identical to the wiper at an end stop. Only opens are
+detectable, and only opens were tested. See the driver commit.
+
 ### Stage D broke the Modbus link, and the DUT's own counters said how
 
 The first stage D build **silently dropped 9.7 % of requests** — 271 served of
