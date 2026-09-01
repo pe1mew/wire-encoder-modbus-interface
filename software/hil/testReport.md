@@ -509,6 +509,57 @@ RAM 688 B, both inside the NFR-RES01 ceilings.
 The 0-LSB span is the 16-conversion mean with min/max rejection doing its job;
 FR-E03's criterion allows 3.
 
+### FR-E14 / FR-E16 — end-switch classification, all three states
+
+**PASS.** All three §4.4.3 states reached on hardware by actuating the PNP
+proximity switches, and each drove the status bits FR-S33 specifies:
+
+| Actuation | Status | Classification |
+|---|---|---|
+| Neither sensor | `0x0002` | bits 3 and 4 clear |
+| Sensor A alone | `0x000a` | **bit 3** — one active |
+| Sensor B alone | `0x000a` | **bit 3** — same band |
+| Both together | `0x0012` | **bit 4** — switch fault |
+
+**A and B produce the identical band.** The §4.4.3 measurements assumed the two
+68 kΩ summing arms are matched; nothing had checked it on this device. They are.
+
+**Bit 4 had never been exercised before.** "Both active" is physically
+impossible on a working window — the frame cannot be at both stops — so it only
+arises from a wiring or mounting fault, which is exactly what the bit is for.
+This is the first evidence the path works at all.
+
+**FR-E16 isolation — the opening path is untouched by switching.** Across all
+seven switch transitions, 30001 was *identical* in the polls either side:
+
+    0.16 - 17.98 s   30001 = 6637, 30005 = 679   (across the ONE transition)
+    20.22 - 35.56 s  30001 = 6578, 30005 = 673   (across FIVE transitions)
+    40.02 - 45.39 s  30001 = 6549, 30005 = 670   (across the neither transition)
+
+30001 changed exactly twice, both times mid-state, and both times tracking
+30005: raw −6 then −3 counts gives opening −59 then −29, matching the ~9.8
+units-per-count scaling. That is the wiper drifting, not switch coupling.
+
+**Three versions of this check were wrong before one was right**, and the
+progression is worth keeping because the mistake is subtle:
+
+1. **Range.** Compared the whole run's min/max span of 30001 (88) against an
+   arbitrary threshold, and failed. But FR-E16 permits the opening to change —
+   it forbids it changing *because* a switch changed. Span cannot express that.
+2. **Edge-to-edge.** Compared 30001 at consecutive transitions, up to 6.7 s
+   apart, so ordinary drift accumulated into the delta and it failed again.
+3. **Adjacent polls.** Compare the poll immediately before and after each
+   transition, ~0.1 s apart. Drift is negligible over that span, and every
+   transition shows zero movement.
+
+**Correlation questions need a correlation statistic.** Two of those three
+attempts reported a FAIL against a device that was behaving correctly.
+
+**NOT verified: FR-E15's 20 ms debounce.** It requires a 5 ms bounce injected
+electrically; a hand-actuated proximity sensor cannot produce one. The
+transitions observed here were clean, which is consistent with a working
+debounce but does not test it.
+
 ### FR-E07 — the wiper fault machine, both directions
 
 **PASS**, measured across real transitions with the wiper physically
