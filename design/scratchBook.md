@@ -241,7 +241,7 @@ and it is worth knowing before spending an afternoon on it.
 Given the opening is already measured to ±0.1 % of travel, *which* switch is
 the redundant one. So spend the resolution elsewhere.
 
-> ⚠️ **Corrected 2026-08-08 — the "not both" claim above is NPN-only.**
+> ⚠️ **Corrected 2026-08-31 — the "not both" claim above is NPN-only.**
 >
 > Everything above assumes the NPN topology: switches *shorting* resistors to
 > GND, where `R_A ∥ R_B` collapses toward the smaller resistor as the two
@@ -442,7 +442,7 @@ Documentation is complete. What remains is implementation and evidence:
    BOM line on the board, and the degradation this warned about is what the
    design has, deliberately.
 
-### The sensor changed to PNP — 2026-08-08
+### The sensor changed to PNP — 2026-08-29
 
 The LJ18A3-8-Z/BX is out; **3RG4023-3AB00** is in, because there are units on
 the bench. It is **PNP** where the old one was NPN, and that single fact

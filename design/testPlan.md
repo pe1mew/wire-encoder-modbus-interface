@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | Test plan for the wire-encoder Modbus interface |
-| Version | 0.1 (first issue — written when hardware was first wired, 2026-08-08) |
+| Version | 0.2 (2026-09-01 — Modbus rows re-traced against the TDS after the first Group B run; 8 rows added, 5 citations corrected) |
 | Traces to | [`TDS.md`](TDS.md) v0.6 — every row below cites the requirement whose verification clause it executes |
 | Records to | [`../software/hil/testReport.md`](../software/hil/testReport.md) |
 | Supersedes | [`integrationPlan.md`](integrationPlan.md) §7, which was a placeholder awaiting hardware |
@@ -54,11 +54,11 @@ image will produce failures that mean nothing.
 
 | Item | Purpose | Status |
 |---|---|---|
-| WCH-LinkE | Flash and debug over SWIO | **Verified working** 2026-08-08 — `mode:RV version 2.15`, target examined, `misa=0x40800014` |
+| WCH-LinkE | Flash and debug over SWIO | **Verified working** 2026-08-31 — `mode:RV version 2.15`, target examined, `misa=0x40800014` |
 | Bench PSU, 24 V, adjustable ±15 % | Sensor supply and PoE feed; Group A and the tolerance rows | Required |
 | DMM, 4½ digit | Node voltages; 1 mV resolution matters for the §4.4 bands | Required |
 | **ADALM2000 (M2K)** | Stimulus *and* the raw RS-485 master — see §3.2. Also a 16-channel logic analyser, so it covers the timing rows until the Saleae arrives | **Available.** `libm2k` in a Python 3.11 venv; `m2k_smoke.py` proves the link |
-| Saleae Logic16 | Preferred observer for the FR-MB timing rows | **Connected and verified** 2026-08-08 — device `94BAD48182A91BFD` visible over the Logic 2 MCP bridge. Probe map in §3.5 |
+| Saleae Logic16 | Preferred observer for the FR-MB timing rows | **Connected and verified** 2026-09-01 — device `94BAD48182A91BFD` visible over the Logic 2 MCP bridge. Probe map in §3.5 |
 | Hot-air source or hair dryer | TP-A01, the blocking leakage test | Required |
 | Precision resistance box or 10 k pot | Stands in for the draw-wire in Group C | For stage D |
 
@@ -183,10 +183,10 @@ Run these first. TP-A01 is the item gating the PCB.
 
 | ID | Traces to | Procedure | Pass criterion |
 |---|---|---|---|
-| **TP-A00** | §4.4.4 | **Run this before TP-A01.** Verify the rig before trusting any reading from it: R5 continuity to 0 V, R6 to the summing node, R10 **absent**. Then unplug both sensor outputs from R8/R9 and measure PC4. | **≤ 5 counts (≈0.016 V).** *(Executed 2026-08-08 — **FOUND TWO FAULTS**: R10 still fitted and R5 floating. Every measurement taken before the fix was of a circuit that was neither the schematic nor a divider, and all of it was discarded. This row earned its place on first use — and again afterwards, when its own criterion caught the MCU pull-up on PC4 that had survived every rig fix. Passed on the fourth attempt at −20 mV.)* |
-| ~~**TP-A01**~~ | TDS §6, §4.4.4 | **WITHDRAWN 2026-08-08 — there is no leakage to heat.** The 33 µA it was written to characterise was the MCU's pull-up on PC4, not the sensors, which move PC4 by 0.9 mV between connected and disconnected. Retained here only so the withdrawal is visible. Original procedure: Disconnect sensor B. With sensor A powered and inactive, record PC4 at room temperature. Warm the sensor body by ~20 °C (hot air, low; measure the case). Record PC4 every 5 °C. | PC4 rises by **less than 30 %** over the sweep → the 35 µA is an internal bleeder, §4.4 stands. A steep climb → junction leakage, and §4.4.2's values need re-deriving with a smaller `Rs` and a lighter load. **Record the curve, not just the verdict.** |
-| **TP-A02** | §4.4.3 | With both sensors connected and powered, measure PC4 in all three states: neither active, each one active separately, both active. | Within **±5 %** of −0.019 / 1.291 / 2.210 V. *(Executed 2026-08-08, final set: −0.019 / 1.291 / 1.292 / 2.210. `Von` = 23.09 V from three independent routes agreeing to 0.2 %.)* |
-| **TP-A03** | §4.4.4 | Sweep the sensor supply 20.4 → 27.6 V. Record PC4 for one-active and both-active at each end. | One active ≤ 462 counts and both active ≥ 582 counts, i.e. the 522 threshold is not crossed from either side. **BLOCKED 2026-08-08 — no adjustable PSU available.** This matters more than a skipped row usually would: the ±15 % supply margin is the *tightest number in the design* (≈60 counts at `SW_TH_BOTH`) and it is currently **calculated, not measured**. It also leaves open whether the 1.01 V output drop is constant or scales with the rail, which is what the sweep would have settled. Needs a bench supply, or a series element to drop the rail for the low end. |
+| **TP-A00** | §4.4.4 | **Run this before TP-A01.** Verify the rig before trusting any reading from it: R5 continuity to 0 V, R6 to the summing node, R10 **absent**. Then unplug both sensor outputs from R8/R9 and measure PC4. | **≤ 5 counts (≈0.016 V).** *(Executed 2026-08-31 — **FOUND TWO FAULTS**: R10 still fitted and R5 floating. Every measurement taken before the fix was of a circuit that was neither the schematic nor a divider, and all of it was discarded. This row earned its place on first use — and again afterwards, when its own criterion caught the MCU pull-up on PC4 that had survived every rig fix. Passed on the fourth attempt at −20 mV.)* |
+| ~~**TP-A01**~~ | TDS §6, §4.4.4 | **WITHDRAWN 2026-08-31 — there is no leakage to heat.** The 33 µA it was written to characterise was the MCU's pull-up on PC4, not the sensors, which move PC4 by 0.9 mV between connected and disconnected. Retained here only so the withdrawal is visible. Original procedure: Disconnect sensor B. With sensor A powered and inactive, record PC4 at room temperature. Warm the sensor body by ~20 °C (hot air, low; measure the case). Record PC4 every 5 °C. | PC4 rises by **less than 30 %** over the sweep → the 35 µA is an internal bleeder, §4.4 stands. A steep climb → junction leakage, and §4.4.2's values need re-deriving with a smaller `Rs` and a lighter load. **Record the curve, not just the verdict.** |
+| **TP-A02** | §4.4.3 | With both sensors connected and powered, measure PC4 in all three states: neither active, each one active separately, both active. | Within **±5 %** of −0.019 / 1.291 / 2.210 V. *(Executed 2026-08-31, final set: −0.019 / 1.291 / 1.292 / 2.210. `Von` = 23.09 V from three independent routes agreeing to 0.2 %.)* |
+| **TP-A03** | §4.4.4 | Sweep the sensor supply 20.4 → 27.6 V. Record PC4 for one-active and both-active at each end. | One active ≤ 462 counts and both active ≥ 582 counts, i.e. the 522 threshold is not crossed from either side. **BLOCKED 2026-08-31 — no adjustable PSU available.** This matters more than a skipped row usually would: the ±15 % supply margin is the *tightest number in the design* (≈60 counts at `SW_TH_BOTH`) and it is currently **calculated, not measured**. It also leaves open whether the 1.01 V output drop is constant or scales with the rail, which is what the sweep would have settled. Needs a bench supply, or a series element to drop the rail for the low end. |
 | **TP-A04** | FR-E21 | Apply **+27.6 V** to each J4 pin in turn for 60 s. Measure the current into PA2. | ≤ **4 mA** (CH32V003 absolute maximum, datasheet §3.2). Device undamaged; the wiper reads correctly after removal. |
 | **TP-A05** | FR-E21, §4.6.1 | Measure the mid-scale wiper code with D3 fitted and unfitted, at room temperature and at +70 °C. | Difference ≤ **1 count**. This is the PESD5V0S1BA leakage figure no datasheet answers at 3.3 V and +70 °C. |
 | **TP-A06** | §4.3, FR-E11 | With the draw-wire at mid-travel, verify the wiper is fed from 3V3 and that PA2 tracks it ratiometrically: vary 3V3 by ±5 % and observe the *ratio*. | The wiper/3V3 ratio changes by < 0.2 %. Confirms nothing has broken ratiometric operation. |
@@ -232,7 +232,7 @@ than assume: the address, the register map and the build differ.
 | TP-B15 | FR-MB03 | Inter-frame idle (t3.5) at 9600 baud. | Frames separated correctly; no merged frames under back-to-back polling. |
 | TP-B16 | FR-S35 | Read 30009 and 30010 after a known mix of good and bad frames. | Counts match the frames sent exactly. |
 | TP-B17 | §2.7, FR-MB08 | Read every input register 30001–30015. | All present; measurement registers return their FR-S23 pre-first-window value (see §6 — this is expected, not a fault). |
-| TP-B18 | §2.8, FR-MB09 | Read every holding register 40001–40007 after a factory reset. | Defaults match §2.8: 0 / 1000 / 10 / 10000 / 0 / 1023 / 0. |
+| TP-B18 | §2.8, FR-MB09 | Read every holding register 40001–40007 after a factory reset. | Defaults match §2.8: 0 / 1000 / 10 / 10000 / 0 / 1023 / 0. **Precondition:** no factory-reset procedure is defined yet (see §7), so a run that merely finds the defaults present has not verified them. |
 | TP-B25 | FR-MB12 | Send FC01, FC02, FC05 to the DUT's address. | Exception **01** for each. |
 | TP-B26 | FR-MB14 | FC04 read whose range spans the map edge (e.g. 12 registers from 30010). | Exception **02** for the whole request; **no partial data**. |
 | TP-B27 | FR-MB15 | FC06 write to an unimplemented holding address (raw 0x0020). | Exception **02**; no register changes. |
@@ -316,7 +316,7 @@ show we know about them.
 
 ## 9. Known gaps in this plan
 
-- ~~The raw-master scripts do not exist yet.~~ **Written 2026-08-08.**
+- ~~The raw-master scripts do not exist yet.~~ **Written 2026-09-01.**
   `software/hil/modbus_rtu_codec.py` (framing, CRC, 8N1 codec) is pure Python
   and passes 20/20 host tests; `software/hil/m2k_master.py` drives it from M2K
   DIO. The transport is smoke-tested against a real M2K — open, configure,
@@ -324,7 +324,7 @@ show we know about them.
   **What remains is physical**: the second MAX3485 has to be wired per §3.2,
   and `m2k_master.py --selftest` is the ten-second proof it is alive before
   any Group B row is attempted.
-- ~~The Saleae is not connected yet.~~ **Resolved 2026-08-08** — the Logic16
+- ~~The Saleae is not connected yet.~~ **Resolved 2026-09-01** — the Logic16
   is visible over the MCP bridge (`94BAD48182A91BFD`). TP-B14, TP-B15 and
   TP-B24 can use it directly, with the M2K driving as raw master.
 - **No factory-reset procedure is defined**, which TP-B18 assumes. Erasing
@@ -338,6 +338,10 @@ show we know about them.
 
 ---
 
-*End of test plan v0.1 (2026-08-08). Group A is runnable today and TP-A01 gates
-the PCB. Group B is runnable as soon as a Modbus master exists. Group C is
-blocked on integration stage D, and saying so is the point of this document.*
+*End of test plan v0.2 (2026-09-01). Group A is open: TP-A00 and TP-A02 pass,
+TP-A01 is **withdrawn** — it was written to characterise a sensor leakage that
+did not exist. Group B has been run as far as the master can take it: 34 checks
+pass across 21 rows; the rest need a power cycle, a jumper, the `encoder_test`
+build or the scope. **TP-A03 and TP-B23 are blocked** on a fixed-output PSU, and
+between them they hold the tightest margin in the design. Group C is blocked on
+integration stage D, and saying so is the point of this document.*

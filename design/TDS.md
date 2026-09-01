@@ -289,7 +289,7 @@ implementation.
 
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
-| FR-E11 | Must | The raw code shall be obtained by reading the potentiometer wiper voltage on PA2 using the ADC in 10-bit ratiometric mode referenced to VDD. No external reference shall be used. | Via 30005: wiper at each mechanical end stop reads ≤5 and ≥1018 respectively. **PC4 shall be configured as an analog input with no pull-up or pull-down.** A pulled-up digital input sources ~63 µA into the §4.4 summing node from the MCU's own 47 kΩ, shifting every band and presenting exactly as sensor leakage — observed on the bench 2026-08-08 and diagnosed only after a full day. | Code review confirms PC4's mode and that no pull is enabled. On the bench, PC4 with both sensors disconnected reads ≤5 counts. |
+| FR-E11 | Must | The raw code shall be obtained by reading the potentiometer wiper voltage on PA2 using the ADC in 10-bit ratiometric mode referenced to VDD. No external reference shall be used. | Via 30005: wiper at each mechanical end stop reads ≤5 and ≥1018 respectively. **PC4 shall be configured as an analog input with no pull-up or pull-down.** A pulled-up digital input sources ~63 µA into the §4.4 summing node from the MCU's own 47 kΩ, shifting every band and presenting exactly as sensor leakage — observed on the bench 2026-08-31 and diagnosed only after a full day. | Code review confirms PC4's mode and that no pull is enabled. On the bench, PC4 with both sensors disconnected reads ≤5 counts. |
 | FR-E12 | Must | The ADC sample time shall be configured to **≥241 cycles**. The pot contributes 2.5 kΩ at mid-scale and FR-E21's protection adds 10 kΩ in series, so the DC source impedance is 12.5 kΩ — above the 10 kΩ the previous ≥71-cycle setting was chosen for. The C6 reservoir (§4.3) means the sample capacitor does not actually charge through that resistance, but the longer sample time costs nothing measurable (~42 µs per conversion against a ≥100 ms window) and removes the need to rely on the reservoir argument. | Code review confirms the sample-time setting. Via 30005: 32 consecutive reads at a fixed mid position span ≤3 counts, and the mid-scale code shifts ≤1 count when R11 is shorted out on the bench. |
 | FR-E13 | Must | Each update of 30001 shall be derived from ≥16 ADC conversions (mean, or median with outlier rejection) at an update rate of ≥10 Hz. | Code review of the conversion scheme; the FR-E03 stability criterion (span ≤3 LSB over 100 reads) passes. |
 
@@ -310,9 +310,9 @@ resistor values; the derivation is in `design/scratchBook.md`.
 |----|----------|-------------|---------------------|
 | FR-E20 | Should | Input register 30015 shall report the window opening as a percentage of the configured full travel, in units of 0.1 % (0–1000), derived from the *instantaneous* opening (30001) so that it tracks the same value a positioning loop reads. It shall be computed as `(30001 − 40001) × 1000 / 40004`, clamped to 1000, and shall carry the FR-E07 fault sentinel 65535 whenever 30001 does. | With the window at the calibrated closed point 30015 reads 0; at full travel it reads 1000; at the midpoint 500 ±1. Halving 40004 doubles the reported percentage for the same physical position. Disconnecting the wiper drives it to 65535 alongside 30001. |
 | FR-E21 | Must | The wiper input shall survive a **sustained** short of any J4 field conductor to the +24 V rail, indefinitely and without damage, while keeping the current injected into PA2 within the CH32V003's **±4 mA** absolute maximum (datasheet §3.2). This is met by a **10 kΩ series element** (R11), which limits the fault to **2.4 mA** at 27.6 V — 24 V passive PoE at +15 % — with the MCU's own clamp conducting at ≈3.9 V. A **bidirectional TVS to GND** (D3, **PESD5V0S1BA**, SOD-323) and a **1 nF reservoir capacitor** (C6) sit on the protected side of R11. The clamp shall have a standoff of **≥5 V** and leak **≤100 nA at 3.3 V across the whole NFR-ENV01 range**; §4.6's ≥10 MΩ wiper-node rule applies here and is what disqualifies the obvious candidates (§4.6.1). **The standoff figure is not a rounding of 3.3 V:** the wiper swings to 3.3 V, so a 3.3 V-standoff part would sit at 100 % of its rated working voltage at full scale, which is exactly where leakage is largest and most temperature-dependent. A 5 V part is well below its knee across the whole measurement range. Note the resistor, not the TVS, is the current limiter: a TVS is a transient device and cannot hold a low-impedance 24 V short. | Apply +27.6 V to each J4 pin in turn for 60 s. The device reports status bit 2 (FR-E07) during, and after removal meets FR-E03 unchanged. Measure the mid-scale raw code with D3 fitted and unfitted at both NFR-ENV01 extremes: the difference shall be ≤1 count. |
-| FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the three states of the §4.4.3 band table: neither active, one sensor active, both active. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". **Inverted 2026-08-08 with the PNP sensor:** *neither active* is now the **lowest** band and *both active* the highest, so there are **three** states, not four. Zero counts is a healthy reading. Status bit 3 shall be set while the classification is "one sensor active". | At each of the three nominal divider values the classification matches the table and status bit 3 follows. Disconnecting one sensor cable reads ~0 counts and classifies as *neither active* — the known limit (§4.4.5), not a defect. |
+| FR-E14 | Must | The firmware shall sample the end-switch divider on PC4 (ADC channel 2) at ≥10 Hz and classify each reading into exactly one of the three states of the §4.4.3 band table: neither active, one sensor active, both active. Status bit 3 (FR-S33) shall be set while the classification is "one sensor active". **Inverted 2026-08-29 with the PNP sensor:** *neither active* is now the **lowest** band and *both active* the highest, so there are **three** states, not four. Zero counts is a healthy reading. Status bit 3 shall be set while the classification is "one sensor active". | At each of the three nominal divider values the classification matches the table and status bit 3 follows. Disconnecting one sensor cable reads ~0 counts and classifies as *neither active* — the known limit (§4.4.5), not a defect. |
 | FR-E15 | Must | The classified switch state shall be debounced in firmware: a change shall be published only after the new state has been observed continuously for ≥20 ms. Sampling and debouncing shall never gate, delay or suppress the FR-MB20 response timing, the measurement path, or the FR-S20 watchdog feed. | Inject a 5 ms bounce burst: bit 3 changes exactly once, with no intermediate toggling visible to a master polling at 50 ms. The FR-MB21 latency histogram matches one taken with the switch input idle, within 2 ms. |
-| FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. **Scope, narrowed again 2026-08-08 with the PNP sensor:** bit 4 now covers **both switches active at once, and nothing else.** A PNP normally-open output sources nothing when inactive, when its cable is open, and when its signal is shorted to 0 V, so all three read ~0 counts and are indistinguishable (§4.4.5). The device cannot detect an open or shorted sensor cable and must not be documented as if it can. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Operate both switches at once: bit 4 sets within 200 ms, and 30001 continues to track the window unchanged. Restore: bit 4 clears within 200 ms. **Two negative tests, both confirming documented limits rather than contradicting them:** disconnect one sensor cable — bit 4 stays clear, bit 3 stays clear, and the device reports no stop; short the switch input to 0 V — the same. |
+| FR-E16 | Must | Status bit 4 (FR-S33) shall be set while the classification is "both active" or "cable fault" — the states that cannot occur on a healthy installation — and cleared otherwise. **Scope, narrowed again 2026-08-29 with the PNP sensor:** bit 4 now covers **both switches active at once, and nothing else.** A PNP normally-open output sources nothing when inactive, when its cable is open, and when its signal is shorted to 0 V, so all three read ~0 counts and are indistinguishable (§4.4.5). The device cannot detect an open or shorted sensor cable and must not be documented as if it can. A switch-loop fault shall be reported only; it shall never suppress, hold or alter the reported opening (30001–30004), which comes from an independent front-end. | Operate both switches at once: bit 4 sets within 200 ms, and 30001 continues to track the window unchanged. Restore: bit 4 clears within 200 ms. **Two negative tests, both confirming documented limits rather than contradicting them:** disconnect one sensor cable — bit 4 stays clear, bit 3 stays clear, and the device reports no stop; short the switch input to 0 V — the same. |
 | FR-E18 | Should | On every debounced transition into "one sensor active" (FR-E14), the firmware shall capture the current raw wiper code and publish it to **30013** if that stop is the closed end or **30014** if it is the open end, deciding which by the **direction of the last movement** (FR-E10): a window
 that was opening has reached the open end, one that was closing has reached the
 closed end. Where no direction is known — no movement since reset — it shall
@@ -441,7 +441,7 @@ resistor or a clamp. Neither of those breaks ratiometric behaviour. The
 sibling board's decision not to filter was about bandwidth; it was never an
 argument for leaving the pin unprotected.
 
-### 4.4 End-switch interface — summing divider (PNP, 2026-08-08)
+### 4.4 End-switch interface — summing divider (PNP, 2026-08-29)
 
 **Sensor: 3RG4023-3AB00** inductive proximity switch, Pepperl+Fuchs
 (`documentation/6561.pdf`). As specified:
@@ -526,7 +526,7 @@ summing happens on the board.
 Load current at 24 V is **290 µA** — three orders below the sensor's 300 mA
 rating, which is the basis for the drop argument in §4.4.4.
 
-#### 4.4.3 Bands — MEASURED 2026-08-08
+#### 4.4.3 Bands — MEASURED 2026-08-31
 
 Measured at `Von` = 23.09 V against a 24.1 V rail. `Von` is confirmed by
 **three independent routes agreeing to 0.2 %** — each switch alone, and both
@@ -548,7 +548,7 @@ active.
 > plausible fit. All three are discarded. The rig check (TP-A00 in
 > [`testPlan.md`](testPlan.md)) is what eventually caught them.
 
-**The ordering is inverted** relative to any revision before 2026-08-08: with
+**The ordering is inverted** relative to any revision before 2026-08-29: with
 a PNP output, *normal is the lowest reading* and a fault the highest.
 
 #### 4.4.4 What the bench measurement established
@@ -786,7 +786,7 @@ about 3.3 V at +70 °C. FR-E21's verification is exactly that measurement.
 
 | ID | Priority | Requirement | Pass/Fail criterion |
 |----|----------|-------------|---------------------|
-| NFR-ENV01 | Must | All §2 and §3 requirements shall be met over an ambient temperature range of **−25 °C to +70 °C** (**raised 2026-08-08**). The ceiling was previously +65 °C, set by the LJ18A3-8-Z/BX end switch. The **3RG4023-3AB00** that replaces it is rated **−25…+85 °C** (§4.4) and is no longer the narrowest part, so the limit reverts to the electronics — which the sibling project's part set carries to +70 °C. This meets the greenhouse study's NF-WP03 in full; see `requirementsCompliance.md`. The low end is now set by the sensor at −25 °C, comfortably below the −20 °C asked. | In a climate chamber at both extremes: (a) 10,000 FC04 cycles at 9600 8N1 complete with zero framing/CRC errors; (b) the FR-S17 window measurement passes at its full-range tolerance; (c) the §4.4 switch bands decode correctly at both extremes, since the sensor's saturation voltage is itself temperature-dependent. |
+| NFR-ENV01 | Must | All §2 and §3 requirements shall be met over an ambient temperature range of **−25 °C to +70 °C** (**raised 2026-08-29**). The ceiling was previously +65 °C, set by the LJ18A3-8-Z/BX end switch. The **3RG4023-3AB00** that replaces it is rated **−25…+85 °C** (§4.4) and is no longer the narrowest part, so the limit reverts to the electronics — which the sibling project's part set carries to +70 °C. This meets the greenhouse study's NF-WP03 in full; see `requirementsCompliance.md`. The low end is now set by the sensor at −25 °C, comfortably below the −20 °C asked. | In a climate chamber at both extremes: (a) 10,000 FC04 cycles at 9600 8N1 complete with zero framing/CRC errors; (b) the FR-S17 window measurement passes at its full-range tolerance; (c) the §4.4 switch bands decode correctly at both extremes, since the sensor's saturation voltage is itself temperature-dependent. |
 | NFR-ENV02 | Must | The device shall operate in a **condensing** environment, up to 100 % relative humidity. Two measures are required and neither substitutes for the other: (a) a **pressure-equalisation vent** so the enclosure does not pump moist air and liquid water in through its seals as it cools (§4.5); (b) protection of the assembled board against the moisture films that will still form — conformal coating or an equivalent documented on the BOM — such that **surface leakage from the wiper node to any rail stays above 10 MΩ** under condensing conditions (§4.6). | Cycle the device through a condensing night in the installed enclosure — a temperature swing carrying the internal air below its dew point — while polling continuously: zero read failures, and the reported opening at a fixed sensor position moves by no more than the FR-E03 tolerance. Measure wiper-node-to-rail insulation resistance immediately after the cold soak, with condensate present: ≥10 MΩ. Inspect the glands and the vent for water ingress. |
 | NFR-ENV03 | Must | The enclosure shall be rated at least **IP65**, with every field cable entering through a gland sized to that cable and every connector and termination inside the enclosure (§4.5). The figure is set by the selected **Kopp 99966478** box (`hardware/Documentation/`), which is IP65; the electronics themselves impose no such limit. IP65 — protection against water jets — is the level the greenhouse study asks of hardware not mounted at the aperture, and this box holds only the electronics. | Inspection against the enclosure and gland datasheets; a spray test per the IP65 definition on a fully assembled and glanded unit, including the vent plug. |
 | NFR-ENV04 | Should | The device shall be mounted out of direct UV exposure (§4.5). Where that cannot be guaranteed for a given installation, the enclosure material shall be UV-stabilised. | Installation inspection. Where the mounting position is exposed, the enclosure datasheet shall state UV stabilisation. |
@@ -857,7 +857,7 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   between the calibration points, and the same check is applied to values
   loaded from flash so a degenerate stored pair cannot reach the divisor.
 
-- **The §4.4 band nominals — CLOSED 2026-08-08. They are now measured.** All
+- **The §4.4 band nominals — CLOSED 2026-08-31. They are now measured.** All
   three states were read on the bench and the fitted model agrees to ≤0.1 mV
   (§4.4.3). The item this replaces was written for the LJ18A3 and asked for its
   internal pull-up and `Vsat`; the sensor change retired both questions before
@@ -869,7 +869,7 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   normally-open output, *inactive*, *cable open* and *shorted to 0 V* are one
   electrical condition: nothing sourcing, ~0 counts. So the device says
   "between the stops" when the truth is "I have lost the sensor". **Note the
-  direction changed on 2026-08-08:** under the previous NPN part a cut landed
+  direction changed on 2026-08-29:** under the previous NPN part a cut landed
   at 337 counts and reported a *false* stop; it now reports a missed one.
   Neither is detected, and FR-E16 and status bit 4 are narrowed to say so. **A firmware mitigation is available and not yet specified:** once
   FR-E19 has taught the endpoints, a stop claimed while the wiper sits far
@@ -885,7 +885,7 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   introduced this; the dry-contact design did not have it. Now a sub-case of
   the item above rather than a separate problem.
 
-- **Output drop and off-state leakage — BOTH CLOSED 2026-08-08, and both
+- **Output drop and off-state leakage — BOTH CLOSED 2026-08-31, and both
   differently from the first answer.** The drop is **1.01 V at 290 µA**, not
   the zero an earlier fit reported; `Von` is 23.09 V against a 24.1 V rail,
   confirmed by three routes agreeing to 0.2 %. The leakage is **nil** —
@@ -913,7 +913,7 @@ Everything here is genuinely undecided. Items are removed (or kept with a
   aluminium 0.40, stainless 0.70 — a non-ferrous frame roughly halves the
   working distance.
 
-- **Temperature ceiling — CLOSED (2026-08-08).** NFR-ENV01 was narrowed to
+- **Temperature ceiling — CLOSED (2026-08-29).** NFR-ENV01 was narrowed to
   +65 °C on 2026-07-29 because the LJ18A3-8-Z/BX capped it there, and that was
   recorded as the one requirement this design knowingly failed against the
   greenhouse study. The 3RG4023-3AB00 is rated **−25…+85 °C**, so the sensor
@@ -995,7 +995,7 @@ Everything here is genuinely undecided. Items are removed (or kept with a
 
 ---
 
-*End of Technical Design Specification v0.6 (2026-08-08: end switch changed to
+*End of Technical Design Specification v0.6 (2026-08-31: end switch changed to
 the 3RG4023-3AB00 — PNP, so §4.4's bands invert and the fault band is lost;
 R10 deleted and R8/R9 retuned to 68 k; FR-E14/FR-E16/FR-S33 narrowed to match;
 NFR-ENV01 raised to +70 °C, which closes NF-WP03. v0.5 added the FR-E17

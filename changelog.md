@@ -230,7 +230,7 @@ that also monitors its own cable.
   measurement is no longer ratiometric, and both-active vs cable-fault are
   only just distinguishable — both are bit-4 faults, so treat them as one.
   `regs.c`'s classifier and thresholds updated to match.
-- **The §4.4 bands are measured, not computed** (2026-08-08). All three
+- **The §4.4 bands are measured, not computed** (2026-08-31). All three
   states read on the bench against real sensors, and the fitted model agrees
   to **≤0.1 mV**:
 
@@ -278,7 +278,7 @@ that also monitors its own cable.
   one nearly went unexamined.
 
 - **End switch changed to the 3RG4023-3AB00, and it inverts the whole
-  interface** (2026-08-08, `documentation/6561.pdf`). The LJ18A3-8-Z/BX was
+  interface** (2026-08-29, `documentation/6561.pdf`). The LJ18A3-8-Z/BX was
   **NPN** with an internal 10 kΩ pull-up, so an inactive sensor sat *high*.
   This one is **PNP**: inactive is *open*, operated drives *high*. Every level
   in §4.4 inverts, and so do the firmware thresholds — **normal is now the

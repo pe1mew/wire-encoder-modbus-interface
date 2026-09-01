@@ -191,14 +191,14 @@ static persist_settings_t persisted;
  *                                       |
  *                                      GND
  *
- * SENSOR: 3RG4023-3AB00, 3-wire DC PNP, normally open (TDS §4.4, 2026-08-08).
+ * SENSOR: 3RG4023-3AB00, 3-wire DC PNP, normally open (TDS §4.4, 2026-08-29).
  * PNP sources from +V when it operates and is open when it does not, so the
  * board supplies the pull-down (the 10k+4k7 attenuator is it) and there is no
  * pull-up. This REPLACES an NPN part, so every level below is inverted
  * relative to earlier revisions of this file: normal is now the LOWEST
  * reading and a fault the highest.
  *
- * MEASURED on silicon 2026-08-08, final set, at Von = 23.09 V. Von is
+ * MEASURED on silicon 2026-08-31, final set, at Von = 23.09 V. Von is
  * confirmed by three independent routes agreeing to 0.2 %: each switch alone,
  * and both together (which carries no leakage term at all).
  *
@@ -476,7 +476,7 @@ void regs_publish_switches(uint16_t raw)
 	/* FR-E16: the ONE state a healthy installation cannot produce. Both ends
 	 * reached at once means a switch or its mounting has failed. Reported only
 	 * — the opening registers come from an independent front-end and are never
-	 * suppressed or altered by a switch fault. Narrowed 2026-08-08: with a PNP
+	 * suppressed or altered by a switch fault. Narrowed 2026-08-29: with a PNP
 	 * sensor there is no readable cable-fault state to add to this. */
 	if (sw_published == SW_BOTH_ACTIVE)
 		r_status |= STATUS_SWITCH_FAULT;

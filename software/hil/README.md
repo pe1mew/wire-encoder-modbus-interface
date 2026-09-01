@@ -49,7 +49,7 @@ flash (`pio`) → stimulate (ADALM2000 / libm2k) → observe (Saleae Logic 2 MCP
 | `saleae_serial.py` | Shared module: UART capture + timestamped line decode | library |
 | `modbus_rtu_codec.py` | Modbus RTU framing, CRC-16 and the 8N1 bit codec — **pure Python, no instrument** | library, **20/20 host tests pass** |
 | `test_modbus_rtu_codec.py` | Host tests for the above: CRC vs an independent implementation over 2000 vectors, the published `01 03 00 00 00 0A` → `C5 CD` vector, byte order, exception decoding, UART round-trips | `python software/hil/test_modbus_rtu_codec.py` |
-| `m2k_master.py` | **Raw RS-485 Modbus master** bit-banged from M2K DIO through a second MAX3485. `--selftest` for the static DE/DI proof | transport smoke-tested against an M2K 2026-08-08; not yet run against the DUT |
+| `m2k_master.py` | **Raw RS-485 Modbus master** bit-banged from M2K DIO through a second MAX3485. `--selftest` for the static DE/DI proof | **run against the DUT 2026-09-01** — link up, 1000-poll latency measured |
 | `we_check.py` | Encoder driver phase-1 matrix (`driverDevelopment.md` §3.3) — divider-fed linearity, stability, fault rows | **to be written** |
 | `mb_check.py` | Modbus RTU protocol matrix (TDS §2) against this register map | **to be written** — port from the source project and retarget the addresses |
 | `regs_check.py` | Full TDS §2.7/§2.8 register read/write matrix | **to be written** |

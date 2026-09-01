@@ -145,7 +145,7 @@ def decode_uart(samples: list[int], samples_per_bit: int) -> bytes:
     receiver does. Advancing a fixed ten bit times per character instead looks
     correct and works on short frames, but lets any baud difference accumulate:
     the CH32V003 transmits 0.8 % fast (measured 9.92 bit times per character on
-    2026-08-08), which is nothing across a 7-byte reply and a whole bit time
+    2026-09-01), which is nothing across a 7-byte reply and a whole bit time
     across a 35-byte one. The long frames then lost characters to framing
     errors while the short ones decoded perfectly — a failure that reads like a
     truncated response and is not one.

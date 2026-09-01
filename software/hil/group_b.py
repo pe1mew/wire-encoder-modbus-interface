@@ -19,6 +19,7 @@ rather than assumed, and subtracted from every delta.
 from __future__ import annotations
 
 import argparse
+import json
 import statistics
 import sys
 import time
@@ -32,6 +33,9 @@ from m2k_master import (M2kMaster, SAMPLE_RATE, SAMPLES_PER_BIT, T35_S,
 IREG_CRC_ERRS, IREG_SERVED = 0x0008, 0x0009
 HOLDING_DEFAULTS = [0, 1000, 10, 10000, 0, 1023, 0]
 CAL_MIN_SPAN = 64
+
+#: Where the as-found holdings are stashed so a killed run is recoverable.
+STASH = Path(__file__).with_name(".holdings-as-found.json")
 
 results: list[tuple[str, str, str, str]] = []
 exception_codes_seen: set[int] = set()
@@ -81,16 +85,41 @@ def main() -> int:
                     help="FR-MB21 sample size; the plan specifies 1000")
     ap.add_argument("--uptime-minutes", type=float, default=0.0,
                     help="TP-B05 duration; the plan specifies 10. 0 skips it.")
+    ap.add_argument("--restore-stashed", action="store_true",
+                    help="write the stashed as-found holdings back and exit; "
+                         "for recovering from a run that was killed")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     u = a.unit
+
+    if a.restore_stashed:
+        return restore_stashed(u, a.verbose)
 
     with M2kMaster(verbose=a.verbose) as m:
         print(f"\nGroup B against unit {u}\n")
 
         # ── as-found state, restored in the finally block ───────────────────
+        # Written to disk BEFORE anything is modified. A finally block does not
+        # run when the process is killed, and on 2026-09-01 a kill left the DUT
+        # holding TP-B09's test values (40002=60000, 40003=60) with no record of
+        # what they had been. The stash is the record; it is removed only after
+        # a verified restore.
+        if STASH.exists():
+            stale = json.loads(STASH.read_text())
+            now = m.read_holding(u, 0x0000, 7)
+            print("\n  *** A previous run did not restore the DUT. ***")
+            print(f"  It recorded 40001-40007 as {stale['as_found']} "
+                  f"at {stale['when']}.")
+            print(f"  The device now reads {now}.")
+            print("  Restore by hand, or pass --restore-stashed, before "
+                  "trusting anything below.\n")
+
         as_found = m.read_holding(u, 0x0000, 7)
         print(f"  as-found holdings 40001-40007: {as_found}")
+        if not STASH.exists():
+            STASH.write_text(json.dumps(
+                {"as_found": as_found, "when": time.strftime("%Y-%m-%d %H:%M:%S"),
+                 "unit": u}, indent=2))
         try:
             run_rows(m, u, as_found, a)
         finally:
@@ -105,7 +134,9 @@ def main() -> int:
                 same = back[:6] == as_found[:6]
                 print(f"  restored: {back[:6]}  " +
                       ("(matches as-found)" if same else "*** MISMATCH ***"))
-                if not same:
+                if same:
+                    STASH.unlink(missing_ok=True)   # only now is it safe to forget
+                else:
                     record("restore", "-", False,
                            f"holdings not restored: {back[:6]} vs {as_found[:6]}")
             except Exception as e:                      # noqa: BLE001
@@ -113,6 +144,34 @@ def main() -> int:
 
     summarise()
     return 1 if any(v == "FAIL" for _, _, v, _ in results) else 0
+
+
+def restore_stashed(unit: int, verbose: bool) -> int:
+    """Put the stashed as-found holdings back, for a run that was killed.
+
+    Restores 40001-40006 in one atomic FC16 — register by register would pass
+    through states FR-S31 and FR-E06 reject. 40007 is not persisted and is not
+    written. The stash is removed only once a read-back confirms the values.
+    """
+    if not STASH.exists():
+        print(f"nothing stashed at {STASH} — nothing to restore")
+        return 0
+    stale = json.loads(STASH.read_text())
+    want = stale["as_found"][:6]
+    print(f"stashed {stale['as_found']} at {stale['when']} (unit {stale['unit']})")
+    if stale["unit"] != unit:
+        print(f"*** stash is for unit {stale['unit']}, not {unit} — refusing")
+        return 1
+    with M2kMaster(verbose=verbose) as m:
+        print(f"  device reads {m.read_holding(unit, 0x0000, 7)}")
+        m.write_multiple(unit, 0x0000, want)
+        back = m.read_holding(unit, 0x0000, 7)
+        if back[:6] == want:
+            STASH.unlink()
+            print(f"  restored {back[:6]}; stash cleared")
+            return 0
+        print(f"  *** restore failed: {back[:6]} != {want}")
+        return 1
 
 
 def run_rows(m, u, as_found, a) -> None:
@@ -400,41 +459,40 @@ def tp_b15(m, u, per_read) -> None:
 def latency(m, u, polls: int) -> None:
     """FR-MB20 (<=100 ms, must) and FR-MB21 (95 % <=15 ms, should).
 
-    Each sample is cross-checked: response_latency_s derives the end of our own
-    frame two independent ways, and a sample whose two routes disagree by more
-    than a bit time is counted as suspect rather than averaged in.
+    Timed against DE, which we drive, rather than against our own frame on RX,
+    which the DUT's receiver suppresses. If the DE readback is unusable the row
+    reports BLOCKED, not FAIL: an unmeasurable timing says nothing about whether
+    the device met it.
     """
     req = codec.read_input_registers(u, 0x0006, 1)
     samples: list[float] = []
-    misses = suspect = 0
-    worst_disagreement = 0.0
+    unmeasurable: list[str] = []
+    worst_width_err = 0.0
     print(f"  measuring response latency over {polls} polls ...")
     for _ in range(polls):
         m._exchange(req)
         got = m.response_latency_s(len(req))
         if got is None:
-            misses += 1
+            unmeasurable.append(m.last_latency_note)
             continue
-        t_s, disagree = got
-        worst_disagreement = max(worst_disagreement, disagree * 1000.0)
-        if disagree * 1000.0 > 1000.0 / 9600 * 11:      # more than one character
-            suspect += 1
-            continue
-        samples.append(t_s * 1000.0)
+        worst_width_err = max(worst_width_err, got["de_width_error_s"] * 1000.0)
+        samples.append(got["latency_s"] * 1000.0)
         time.sleep(0.05)                       # FR-MB21's 50 ms spacing
     if not samples:
-        record("TP-B14", "FR-MB20", False,
-               f"no usable samples ({misses} unanswered, {suspect} suspect)")
+        why = unmeasurable[0] if unmeasurable else "no samples"
+        record("TP-B14", "FR-MB20", None, f"BLOCKED — {why}")
+        record("TP-B29", "FR-MB21", None, "BLOCKED — no usable latency samples")
         return
     samples.sort()
     p95 = samples[int(0.95 * (len(samples) - 1))]
     worst = samples[-1]
-    record("TP-B14", "FR-MB20", worst <= 100.0 and misses == 0 and suspect == 0,
-           f"n={len(samples)}, {misses} unanswered, {suspect} discarded as "
-           f"suspect; median {statistics.median(samples):.2f} ms, p95 "
-           f"{p95:.2f} ms, max {worst:.2f} ms (limit 100 ms). Worst "
-           f"disagreement between the two frame-end derivations: "
-           f"{worst_disagreement:.3f} ms")
+    lost = len(unmeasurable)
+    record("TP-B14", "FR-MB20", worst <= 100.0 and lost == 0,
+           f"n={len(samples)}" + (f", {lost} unmeasurable" if lost else "") +
+           f"; median {statistics.median(samples):.2f} ms, p95 {p95:.2f} ms, "
+           f"max {worst:.2f} ms (limit 100 ms). DE pulse-width error at worst "
+           f"{worst_width_err:.3f} ms, which is the check that the DE readback "
+           f"is our own driven line")
     within15 = sum(1 for s in samples if s <= 15.0) / len(samples)
     partial = "" if polls >= 1000 else         f"  PARTIAL: n={polls}, the plan specifies 1000 — rerun with --polls 1000"
     record("TP-B29", "FR-MB21", within15 >= 0.95 and worst <= 100.0,

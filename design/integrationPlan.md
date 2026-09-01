@@ -146,7 +146,7 @@ plus the measurement rows. Populates `software/hil/testReport.md`.
 
 ## 7. Hardware-gated test set
 
-**Superseded 2026-08-08 by [`testPlan.md`](testPlan.md).** Hardware was
+**Superseded 2026-08-31 by [`testPlan.md`](testPlan.md).** Hardware was
 wired, which is the condition this placeholder was waiting on. The plan
 there traces every row to a TDS verification clause and groups them by what
 the *current* image can exercise:

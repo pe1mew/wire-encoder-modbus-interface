@@ -35,3 +35,6 @@ documentation/doxygen/
 # ---- OS / editor ----
 .DS_Store
 Thumbs.db
+
+# Bench state stashed by software/hil/group_b.py; not a source artefact
+software/hil/.holdings-as-found.json

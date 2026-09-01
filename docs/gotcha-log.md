@@ -14,7 +14,67 @@ holds measured evidence.
 
 ---
 
-### A silent DUT, then a "truncated" reply that was nothing of the kind (2026-08-08)
+### A latency figure that was wrong by 3x and looked entirely reasonable (2026-09-01)
+**Problem**: FR-MB20 response latency was measured at **11.85 ms** — inside the
+100 ms limit, inside FR-MB21's 15 ms preference, and tightly distributed at
+0.06 ms spread. Every property of it invited belief. The true figure is
+**4.08 ms**.
+**Root cause**: The measurement needs the instant our own last stop bit ended.
+It was taken from the RX line: first edge in the capture, plus the known frame
+length. That assumes our transmission appears on RO. **It does not** — R̄Ē is
+tied to DE on the raw master, so the DUT's receiver is disabled while we
+transmit and the first edge in the capture is RO's *enable transient*. Every
+sample was measured from an origin about 70 bit times adrift.
+**Fix**: Measure against **DE**, which we drive ourselves and which the M2K
+captures on the same timebase in the same acquisition — `our last stop bit ends
+at (DE falling edge) − LEAD_SAMPLES`, nothing inferred. The DE **pulse width**
+validates the readback: it must equal `2·LEAD + 10 bit times per byte`, and
+across 1000 polls the error was **zero samples**.
+**What caught it**: not review — a **cross-check**. The row was recorded as
+provisional because its derivation rested on a single route, and a second route
+was added for that reason alone. All 1000 samples then disagreed and the row
+reported `1000 suspect` instead of a number. Without it, 11.85 ms would have
+entered the test report as evidence.
+**Sanity check worth keeping**: the corrected figure is *physically coherent* —
+t3.5 at 9600 is 4.01 ms, and 4.08 ms is that mandatory silence plus ~20 µs of
+firmware. The wrong figure had no such explanation, and nobody had asked it for
+one. **A timing measurement that cannot be accounted for from first principles
+has not been understood, however comfortably it sits inside its limit.**
+**Also fixed**: the row reported FAIL when it could not measure. An
+unmeasurable timing says nothing about whether the device met it; it now reports
+BLOCKED, so a limitation of the rig cannot be read as a defect in the DUT.
+
+---
+
+### A buffered background run looked hung, and killing it left the DUT misconfigured (2026-09-01)
+**Problem**: A long Group B run (1 000 polls plus a 10-minute uptime row) was
+started in the background and produced **no output at all** for ten minutes. It
+was diagnosed as hung — on the evidence that its CPU had gone flat, 0.02 s over
+a 20-second sample — and killed.
+**Root cause**: Two mistakes stacked.
+1. **Python block-buffers stdout when it is redirected.** The run had printed
+   perhaps 3 kB, under the ~8 kB buffer threshold, so nothing reached the file.
+   Silence was an artefact of buffering, not of a hang.
+2. **Flat CPU is not evidence of a hang** when the code contains
+   `time.sleep(15)`. The uptime row sleeps in 15-second blocks; a sleeping
+   process and a blocked one look identical through a CPU sample. A 500-exchange
+   reproducer afterwards ran to completion at a steady 140 ms per exchange,
+   which is what actually cleared libm2k of suspicion.
+**Consequence**: `SIGKILL` does not run `finally`. The run's holding-register
+restore never happened, and the DUT was left with TP-B09's test values
+(40002 = 60000, 40003 = 60) instead of the §2.8 defaults. The next run reported
+this correctly — "differs from §2.8 defaults ... not verified here" — because
+the row prints its precondition rather than assuming it. That is the only
+reason it was noticed at once.
+**Fix**: Always run background jobs with `python -u`. The buffered output from
+the killed run was lost entirely, so nothing was salvageable from ten minutes of
+bench time. Bench state that must survive a kill cannot live only in a `finally`
+block — record it to a file before touching the device, and check for that file
+on the next startup.
+
+---
+
+### A silent DUT, then a "truncated" reply that was nothing of the kind (2026-09-01)
 **Problem**: The DUT answered nothing at all; then, once it answered, short
 replies decoded perfectly and long ones came back four bytes short. Both looked
 like the DUT misbehaving. Neither was.
@@ -49,7 +109,7 @@ wrong theory.
 
 ---
 
-### An instrument's stale buffer accused the rig for an hour (2026-08-08)
+### An instrument's stale buffer accused the rig for an hour (2026-09-01)
 **Problem**: The M2K selftest reported that the master's RS-485 driver would
 not release the bus — `released` measured identical to `drive mark`. An hour
 went into hunting a wiring fault that did not exist: continuity checks, bias
@@ -72,7 +132,7 @@ buffer, not a measurement.
 
 ---
 
-### Three measurement sets fitted to a broken bench (2026-08-08)
+### Three measurement sets fitted to a broken bench (2026-08-31)
 **Problem**: Four sets of switch-band measurements were taken across one day.
 The first three were each fitted to a model, documented in the TDS as
 "MEASURED", and committed — then invalidated by the next set.
@@ -88,7 +148,7 @@ the topology requires it to roughly double. Visible in the very first set.
 
 ---
 
-### An MCU pin masquerading as sensor leakage (2026-08-08)
+### An MCU pin masquerading as sensor leakage (2026-08-31)
 **Problem**: 33–35 µA of apparent sensor off-state leakage, 3.5× the datasheet
 maximum, recorded twice in the TDS and used to move firmware thresholds.
 **Root cause**: PC4's **internal pull-up**, ~47 kΩ to 3V3, enabled by whatever
@@ -102,7 +162,7 @@ than a mystery.
 
 ---
 
-### A proof that went stale under a part change (2026-08-08)
+### A proof that went stale under a part change (2026-08-31)
 **Problem**: Nearly repeated a claim from `scratchBook.md` that a two-switch
 ladder cannot resolve *which* switch and *both closed* simultaneously.
 **Root cause**: The proof was derived for the **NPN** sensor. The PNP part
@@ -115,7 +175,7 @@ is exactly what to re-derive after a part change.
 
 ---
 
-### Divergent library copy nearly lost two footprints (2026-08-08)
+### Divergent library copy nearly lost two footprints (2026-08-07)
 **Problem**: `hardware/KiCad/<project>/my-KiCad-library/` looked like a
 duplicate of the submodule one level up and was a candidate for `.gitignore`.
 **Root cause**: It was *ahead* of the submodule — `DB207-DIP-4` and
@@ -128,7 +188,7 @@ diffing it first.
 
 ---
 
-### KiCad edits that look right and net wrong (2026-08-08)
+### KiCad edits that look right and net wrong (2026-08-07)
 **Problem**: Renaming a net label to move R5 from 3V3 to GND shorted the two
 rails. Separately, a new wire overlapped a pre-existing GND run while carrying
 a `3V3` label.

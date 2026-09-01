@@ -62,6 +62,12 @@ HOUSE_GAP_S = 0.005
 #: response is 35 bytes ≈ 40 ms at 9600, plus turnaround.
 RESPONSE_WINDOW_S = 0.12
 
+#: DE is asserted this long before the first start bit and held this long after
+#: the last stop bit. Shared by _transmit and response_latency_s — the latency
+#: measurement subtracts it to recover the instant our last stop bit ended, so
+#: the two must not drift apart.
+LEAD_SAMPLES = int(0.0005 * SAMPLE_RATE)
+
 
 class M2kMaster:
     """Half-duplex Modbus RTU master on M2K digital I/O.
@@ -138,7 +144,7 @@ class M2kMaster:
            well under the driven level. A transceiver whose DE is stuck high
            passes checks 1 and 2 perfectly while driving the bus continuously —
            contending with every reply and, since R̄Ē is tied to DE, never
-           receiving one. That fault cost a full session on 2026-08-08: the
+           receiving one. That fault cost a full session on 2026-09-01: the
            released differential sat 44 mV from the driven one and the test,
            which only compared mark against space, reported success.
 
@@ -166,7 +172,7 @@ class M2kMaster:
             # buffer that was in flight before it — so a single read reports
             # the PREVIOUS state. That is not academic: with one read per
             # state, `released` came back bit-identical to `drive mark`
-            # (0.817 V / 2.138 V, to three decimals) on 2026-08-08 and the
+            # (0.817 V / 2.138 V, to three decimals) on 2026-09-01 and the
             # test spent an hour accusing the rig of a fault it did not have.
             # Identical values to three decimals are a repeated buffer, not a
             # measurement.
@@ -218,7 +224,7 @@ class M2kMaster:
 
     def _transmit(self, frame: bytes) -> None:
         """Push one frame with DE asserted, then release and hold the gap."""
-        lead = int(0.0005 * SAMPLE_RATE)          # DE settle before the start bit
+        lead = LEAD_SAMPLES                       # DE settle before the start bit
         bits = codec.encode_uart(frame, SAMPLES_PER_BIT)
         buf = [self._word(1, 1)] * lead
         buf += [self._word(b, 1) for b in bits]
@@ -246,46 +252,73 @@ class M2kMaster:
         # Keep the sample stream. Response latency (FR-MB20/21) has to be
         # measured from edges, not inferred from when Python got the bytes —
         # and when a frame does not decode, the raw line is the only honest
-        # evidence of what was on the wire.
+        # evidence of what was on the wire. The full words are kept too: DE is
+        # captured on the same timebase as RX, which is the only exact way to
+        # know when our own transmission ended.
         self.last_capture = line
+        self.last_capture_raw = raw
         return codec.decode_uart(line, SAMPLES_PER_BIT)
 
-    def response_latency_s(self, frame_len: int) -> tuple[float, float] | None:
+    def response_latency_s(self, frame_len: int) -> dict | None:
         """Seconds from the end of our last stop bit to the reply's first edge.
 
-        Returns `(latency, disagreement)` in seconds, or None if the capture
-        holds no reply. `frame_len` is the length in bytes of the frame we sent.
+        Returns a dict with `latency_s` and `de_width_error_s`, or None with
+        `self.last_latency_note` explaining why it could not be measured.
+        `frame_len` is the length in bytes of the frame we sent.
 
-        FR-MB20 is a wire timing, so it is measured from edges rather than from
-        when Python got the bytes. The awkward part is locating the end of *our
-        own* frame: R̄Ē is tied to DE, so the receiver is disabled while we
-        transmit and what appears on RO is a leak, not a faithful copy. Two
-        independent derivations are therefore computed and their difference
-        returned, so a caller can refuse to believe a number whose two routes
-        disagree:
+        **Measured against DE, not against our own frame on RX.** R̄Ē is tied to
+        DE, so the DUT's receiver is disabled while we transmit and our frame
+        does not appear on RO at all. An earlier version tried to locate our
+        last stop bit from the RX line and was wrong on every one of 1000
+        samples, because the first edge in the capture is RO's enable transient
+        rather than our first start bit. DE is captured on the same timebase in
+        the same acquisition and we drive it ourselves, so
 
-          A. from the LAST edge before the idle gap, assumed to be the final
-             character's start bit — wrong if the leak dropped that edge;
-          B. from the FIRST edge in the capture plus the known frame length,
-             which uses the buffer we built rather than what came back.
+            our last stop bit ends at (DE falling edge) - LEAD_SAMPLES
 
-        They agree only if the leak reproduced our frame faithfully at both
-        ends. When they do, the measurement stands on both legs.
+        with nothing inferred. The DE **pulse width** is then the check that the
+        readback means what it is assumed to mean: it must equal
+        2*LEAD_SAMPLES + ten bit times per byte sent, or the capture is not
+        showing our driven DE and no number is returned.
+
+        The reply is the first RX falling edge after that instant which is still
+        low half a bit later — a real start bit. RO's enable transient sits at
+        the DE edge and is far too short to qualify.
         """
-        line = getattr(self, "last_capture", None)
-        if not line:
+        self.last_latency_note = ""
+        raw = getattr(self, "last_capture_raw", None)
+        if raw is None or not len(raw):
+            self.last_latency_note = "no capture"
             return None
-        edges = [i for i in range(1, len(line)) if line[i - 1] == 1 and not line[i]]
-        if not edges:
+        rx = [(w >> DIO_RX) & 1 for w in raw]
+        de = [(w >> DIO_DE) & 1 for w in raw]
+
+        rises = [i for i in range(1, len(de)) if not de[i - 1] and de[i]]
+        falls = [i for i in range(1, len(de)) if de[i - 1] and not de[i]]
+        de_fall = next((f for f in falls if rises and f > rises[0]), None)
+        if not rises or de_fall is None:
+            self.last_latency_note = (
+                "DE does not toggle in the capture — the M2K is not reading back "
+                "its own output pin, so FR-MB20 cannot be measured this way")
             return None
-        gap_min = int(2 * T35_S * SAMPLE_RATE)
-        for a, b in zip(edges, edges[1:]):
-            if b - a >= gap_min:
-                end_a = a + 10 * SAMPLES_PER_BIT
-                end_b = edges[0] + 10 * SAMPLES_PER_BIT * frame_len
-                return ((b - end_b) / SAMPLE_RATE,
-                        abs(end_a - end_b) / SAMPLE_RATE)
-        return None
+
+        expected = 2 * LEAD_SAMPLES + 10 * SAMPLES_PER_BIT * frame_len
+        width_err = abs((de_fall - rises[0]) - expected)
+        if width_err > SAMPLES_PER_BIT:
+            self.last_latency_note = (
+                f"DE pulse {de_fall - rises[0]} samples, expected {expected} for "
+                f"{frame_len} bytes — the readback is not our driven DE")
+            return None
+
+        our_end = de_fall - LEAD_SAMPLES
+        half = SAMPLES_PER_BIT // 2
+        reply = next((i for i in range(our_end + 1, len(rx) - half)
+                      if rx[i - 1] and not rx[i] and not rx[i + half]), None)
+        if reply is None:
+            self.last_latency_note = "no start bit after we released the bus"
+            return None
+        return {"latency_s": (reply - our_end) / SAMPLE_RATE,
+                "de_width_error_s": width_err / SAMPLE_RATE}
 
     @staticmethod
     def _extract(data: bytes, unit: int) -> bytes:
