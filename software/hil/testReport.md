@@ -492,6 +492,65 @@ none of them were the DUT:
    corrupt on that basis; the result was discarded, not counted against the
    device.
 
+### Integration stage E — averaging engine live, status reads 0x0000
+
+`avg.c` implements the FR-S31 boxcar and the FR-E08 envelope; `regs.c` calls it
+at the three points already marked for it. **30002, 30003 and 30004 now update
+and status bit 1 clears.** 5 880 B flash, 1 092 B RAM — 41 % and 61 % of the
+NFR-RES01 ceilings.
+
+**Status `0x0000` — every bit clear — for the first time in this project.**
+Window complete, average filled, no wiper fault, no end stop, no switch fault.
+
+| Observation | |
+|---|---|
+| Bit 1 cleared after 10 windows | N = 10 s / 1 s, exactly as FR-S31 computes |
+| 30002 between 30003 and 30004 throughout | a real envelope, not placeholders |
+| 30003 rose 6549 → 6559 mid-run | the old minimum **rolled out** of the window — the boxcar rolls, it does not merely accumulate |
+
+**FR-S23's no-zero-padding rule, verified on hardware.** After writing 40003 to
+clear the accumulator, 30002 read **6559** from the first completed window — the
+true opening. A zero-padded accumulator would have read ~328, then ~656,
+climbing toward the real value across 20 s. Status also showed `0x0003` at the
+instant of the write (window aborted *and* average cleared, FR-S30/FR-E05), then
+`0x0002` until the first new window closed.
+
+**One buffer serves all three registers.** The mean, minimum and maximum are all
+taken over the same set of published openings, so the ring is 64 entries of
+(mean, min, max) rather than three separate structures — 384 B, which is what
+takes RAM from 688 B to 1 092 B.
+
+### The block that hides an excursion — 26 host tests
+
+`test_avg.c` compiles the **shipped** `avg.c`, not a copy, and covers the three
+properties that are easy to get wrong, invisible on a bench where the opening
+barely moves, and each of which produces a plausible-looking number:
+
+- **FR-S23 partial mean.** 3 of 10 windows at 5000 reads **5000**, not the 1500
+  a zero-padded accumulator gives — the exact case the TDS states.
+- **FR-S31 block weighting.** Half a 200-window span at 2000 and half at 4000
+  averages to 3000, so each block weighs as `block_size` windows rather than as
+  one.
+- **FR-E08 through blocking.** With N = 200 and block size 4, a single 9000
+  excursion reports `max = 9000` — **not** the 4500 block mean. This is the
+  failure the integration plan predicted: a block storing only its mean would
+  report an envelope *narrower than the movement that happened*, hiding exactly
+  what the register exists to expose.
+
+Also covered: the boxcar displacing old values, N clamped to 1 when the
+averaging period is shorter than the window, the N = 64 exact/blocked boundary,
+N = 6000 at full scale for overflow, and a reconfigure forgetting everything.
+
+**Worth flagging: the mean may not earn its place.** The integration plan asked
+for this to be decided deliberately rather than by inheritance, and there is now
+evidence. 30005 measured a span of **0 LSB over 60 reads** — the instantaneous
+reading is already stable, and the averaging engine is inherited from a sibling
+project measuring a genuinely noisy quantity. The envelope registers clearly
+earn their place; they tell a master the window moved between polls. The mean
+costs 384 B of RAM to smooth a signal that does not appear to need smoothing.
+FR-S31 is a **Must**, so it was built as specified — but the register map, not
+the implementation, is where that question belongs.
+
 ### Integration stage D — measurement service live
 
 `we.c` (ADC driver) and `meas_open.c` (window pacing, scaling, publication) are

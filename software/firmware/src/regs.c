@@ -1,5 +1,6 @@
 #include "persist.h"
 #include "regs.h"
+#include "avg.h"
 #include "sensors.h" /* BUILD_TYPE + WE_RAW_MAX_DEFAULT */
 #include "scale.h"
 #include "version.h"
@@ -298,6 +299,8 @@ void regs_init(uint8_t mb_address)
 	persisted.raw_open = h_raw_open;
 
 	r_status = STATUS_FIRST_WINDOW_INCOMPLETE | STATUS_AVG_NOT_FILLED;
+	avg_config(h_window, h_avg);   /* after the holdings load, so the span is
+	                                * the PERSISTED one from the first window */
 	shadow_window = h_window;
 	shadow_avg = h_avg;
 	shadow_travel = h_travel;
@@ -351,7 +354,7 @@ void regs_service(void)
 		shadow_travel = h_travel;
 		shadow_raw_closed = h_raw_closed;
 		shadow_raw_open = h_raw_open;
-		/* TODO stage E: avg_config(h_window, h_avg) once avg.c exists. */
+		avg_config(h_window, h_avg);
 		r_status |= STATUS_FIRST_WINDOW_INCOMPLETE | STATUS_AVG_NOT_FILLED;
 		have_prev_open = false; /* the rate baseline is stale too */
 	}
@@ -586,11 +589,14 @@ void regs_publish_opening(uint16_t raw, uint16_t open_0_1mm, bool valid)
 
 	r_status &= (uint16_t)~STATUS_FIRST_WINDOW_INCOMPLETE; /* FR-S23 */
 
-	/* TODO integration stage E (design/integrationPlan.md): feed the boxcar
-	 * and publish 30002 (mean), 30003/30004 (FR-E08 window min/max), and clear
-	 * STATUS_AVG_NOT_FILLED once the accumulator has filled. Until avg.c
-	 * exists those three registers keep their FR-S23 value and status bit 1
-	 * stays set — which is the truth, not a placeholder. */
+	/* Stage E: only trustworthy windows get here (the !valid path returned
+	 * above), so a fault can never drag the mean or widen the envelope. */
+	avg_push(open_0_1mm);
+	r_open_avg = avg_mean();   /* 30002, FR-S31 */
+	r_open_min = avg_min();    /* 30003, FR-E08 */
+	r_open_max = avg_max();    /* 30004, FR-E08 */
+	if (avg_filled())
+		r_status &= (uint16_t)~STATUS_AVG_NOT_FILLED;   /* FR-S23 bit 1 */
 }
 
 #ifdef TEST_HOOKS

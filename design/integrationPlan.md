@@ -5,7 +5,7 @@
 | Document | Product-firmware integration plan and results |
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
-| Status | **Stages A–D complete** (skeleton, board bring-up, register image + persistence, and now the phase-1 encoder driver `we.c` plus the measurement service `meas_open.c`). **Stage E — the averaging engine — not started**: 30002/30003/30004 do not update and status bit 1 stays set. |
+| Status | **Stages A–E complete** (skeleton, board bring-up, register image + persistence, and now the phase-1 encoder driver `we.c` plus the measurement service `meas_open.c`). **Stage F — acceptance — not started.** All measurement registers are live and status reads 0x0000 on a healthy device. |
 | Related docs | `design/TDS.md` v0.3, `design/softwareArchitecture.md`, `design/driverDevelopment.md`, `software/hil/README.md` |
 
 ## 1. Purpose
@@ -85,7 +85,7 @@ FR-E10 movement rate.
 changing 40002 changes the publish cadence per FR-E02; disconnecting the
 wiper walks the fault machine per FR-E07.
 
-### Stage E — averaging engine — **NOT STARTED**
+### Stage E — averaging engine — **DONE 2026-09-01**
 
 Adds `avg.c`: the FR-S31 boxcar (exact ≤64 windows, two-stage above) for
 30002, plus the FR-E08 min/max tracking for 30003/30004.
