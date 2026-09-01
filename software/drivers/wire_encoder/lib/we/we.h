@@ -2,10 +2,8 @@
  * @file we.h
  * @brief Wire-encoder raw-code acquisition — the TDS §3.4 driver layer.
  *
- * @warning **NOT IMPLEMENTED.** This header is the agreed API contract only;
- *          there is no `we.c` in this repository yet. Linking against it will
- *          fail — deliberately, rather than letting a stub masquerade as a
- *          driver. See `design/driverDevelopment.md` §3.
+ * Implemented in `we.c`. See `design/driverDevelopment.md` §3 for the test
+ * matrix this driver must pass before the product firmware may rely on it.
  *
  * The sensor is a draw-wire encoder attached to a moving window frame: a
  * spring-loaded drum pays out a wire and turns a 10 kΩ potentiometer, so the
@@ -79,13 +77,19 @@ uint16_t we_raw_max(void);
 /**
  * @brief Acquire one raw code from the end-switch ladder on PC4 (FR-E14).
  *
- * The two end-of-travel switches share PC4 through a supervised resistor
- * ladder (TDS §4.4): a board-side pull-up, a resistor per switch to GND, and
- * an end-of-line resistor fitted in the field at the far end of the cable. The
- * resulting level distinguishes five states — cable open, normal, one switch
- * closed, both closed, cable shorted — so a cut or shorted cable is
- * distinguishable from a switch operating, which a single digital input cannot
- * do.
+ * The two PNP sensors share PC4 through a **summing divider** (TDS §4.4): each
+ * sensor output drives 68 kΩ into a common node, which a 10 kΩ / 4k7 divider
+ * scales to the ADC. The level distinguishes **three** states — neither active,
+ * one active, both active.
+ *
+ * @warning **There is no supervision.** This description was rewritten on
+ *          2026-09-01: it previously described a five-state supervised ladder
+ *          with an end-of-line resistor, which was the NPN-era design and has
+ *          not existed since the PNP sensor change of 2026-08-29. An open or
+ *          shorted sensor cable now reads as *neither active* and **cannot be
+ *          told apart from a window between its stops**. That is a consequence
+ *          of the star topology (TDS §4.4.6), not an omission — but any caller
+ *          that assumes a cut cable is detectable is wrong.
  *
  * This driver owns the ADC (it also reads the wiper on channel 0), so the
  * channel switch and its settling live here. It returns the raw code and
@@ -103,8 +107,8 @@ uint16_t we_raw_max(void);
  * @note Call at ≥10 Hz (FR-E14). The conversion is short enough that the
  *       ladder can be sampled every measurement window alongside the wiper
  *       without threatening the FR-MB20 response budget.
- * @note Same ≥71-cycle sample time as the wiper: the ladder's source impedance
- *       with a switch closed is ≤5 kΩ, inside the 10 kΩ that setting targets.
+ * @note Same ≥71-cycle sample time as the wiper: the divider's source impedance
+ *       is ≤5 kΩ, inside the 10 kΩ that setting targets.
  */
 bool we_switch_sample(uint16_t *raw);
 

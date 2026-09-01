@@ -20,7 +20,7 @@ void board_init_early(void)
 	// runtime changes have no effect until reset (FR-MB07).
 	//
 	// PC1, not PC4 (TDS §4.2): PC4 has an ADC channel and PC1 does not, so
-	// the analog pin is spent on the supervised end-switch ladder and this
+	// the analog pin is spent on the end-switch summing divider and this
 	// one-bit boot-time read takes the digital pin.
 	funPinMode(PC1, GPIO_CNF_IN_PUPD);
 	funDigitalWrite(PC1, FUN_HIGH);
