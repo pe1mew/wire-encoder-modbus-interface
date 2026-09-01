@@ -5,7 +5,7 @@
 | Document | Product-firmware integration plan and results |
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
-| Status | **Stages A–E complete** (skeleton, board bring-up, register image + persistence, and now the phase-1 encoder driver `we.c` plus the measurement service `meas_open.c`). **Stage F — acceptance — not started.** All measurement registers are live and status reads 0x0000 on a healthy device. |
+| Status | **Stages A–F complete** (skeleton, board bring-up, register image + persistence, and now the phase-1 encoder driver `we.c` plus the measurement service `meas_open.c`). All measurement registers are live, status reads 0x0000 on a healthy device, and the acceptance suite is green (8 passed). Remaining: the FR-MB07 categorisation decision, TP-A03/TP-B23 blocked on an adjustable PSU, and Group C's stage-D-dependent rows now unblocked but not yet all run. |
 | Related docs | `design/TDS.md` v0.3, `design/softwareArchitecture.md`, `design/driverDevelopment.md`, `software/hil/README.md` |
 
 ## 1. Purpose
@@ -109,7 +109,7 @@ work. Decide deliberately rather than by inheritance.
 accumulator clear on a 40002/40003 write, FR-E05's clear on a calibration
 write, and FR-E08's envelope test.
 
-### Stage F — acceptance — **NOT STARTED**
+### Stage F — acceptance — **DONE 2026-09-01**
 
 The `software/hil/acceptance/` pytest suite run against the flashed
 release build, covering every §2 row executable over the link (NFR-TST01)

@@ -13,7 +13,7 @@ and verdict.
 
 ---
 
-## Status: Group A opened, Group B largely executed, Modbus link up
+## Status: stages A–F complete; acceptance suite green
 
 Hardware exists and has been exercised. What follows is what was actually
 run — everything else in the plan is still untouched.
@@ -491,6 +491,63 @@ none of them were the DUT:
    established was that power had not been restored yet. One round was reported
    corrupt on that basis; the result was discarded, not counted against the
    device.
+
+### Integration stage F — the acceptance suite (NFR-TST01)
+
+`software/hil/acceptance/` run against the flashed release build:
+**8 passed, 0 failed, 2 min 7 s.**
+
+    test_build_within_ceilings[encoder]           PASSED
+    test_build_within_ceilings[encoder_test]      PASSED
+    test_nfr_tst01_every_frmb_id_accounted_for    PASSED
+    test_nfr_tst01_report                         PASSED
+    test_group_b_protocol_matrix                  PASSED
+    test_quantity_limits_and_malformed_frames     PASSED
+    test_oscillator_soak_and_latency              PASSED
+    test_measurement_service                      PASSED
+
+**The traceability gate is a test, not a document.** NFR-TST01's criterion is
+not "the tests pass" — it is that the report *lists every non-excepted, active
+FR-MB ID with result PASS*, and **a missing ID blocks a release exactly as a
+failing one does**. So the gate re-reads the TDS at run time, enumerates the
+FR-MB IDs that exist, and fails if any is unaccounted for. Adding a requirement
+now breaks the suite until it is covered or excepted. It fails in the other
+direction too: a map entry naming a requirement the TDS no longer defines is a
+coverage claim for something withdrawn.
+
+That gate runs **without hardware**, deliberately — a coverage claim that only
+holds when the bench is plugged in is not a coverage claim. The DUT rows skip
+rather than fail when no ADALM2000 is present, so a checkout without the bench
+still runs green and still says what it covered.
+
+| Disposition | Count |
+|---|---|
+| Automated by the suite | **24** |
+| Bench-only, not automated | **1** — FR-MB07 |
+| Excepted by NFR-TST01 | **3** — FR-MB01, FR-MB04, FR-MB23 |
+| Defined in the TDS | 28 |
+
+**FR-MB07 needs a decision, and was initially miscategorised by me.** I first
+listed it as covered, which overstated things. NFR-TST01 scopes itself to
+criteria *"executable over the serial link"*; FR-MB07's substance is that the
+address is **latched at startup**. Reading the address is executable over the
+link — proving it does not change until reset is not, since it needs a power
+cycle. Either NFR-TST01's exception list should name FR-MB07 alongside the other
+three, or FR-MB07 should be split into a link-testable clause and a bench
+clause. Until then it reports as BENCH rather than claiming an automated PASS
+that never happened.
+
+**The three excepted requirements are not unverified.** Evidence gathered this
+session: **FR-MB01** by Logic 2's Async Serial decode of 13 frames, byte-exact;
+**FR-MB04** by TP-B32's drive-envelope measurement (DE asserted 3–82 µs before
+the first start bit, released 3–6 µs after the last stop bit, against a 1 146 µs
+budget); **FR-MB23** by the zero-CRC-error soak across 10 000 exchanges. They
+remain excepted because the requirement says so, not because nothing is known.
+
+**One deliberate deviation in the suite:** the soak runs 500 cycles here, not
+FR-S16's 10 000. This gate runs on every release and 10 000 takes 25 minutes.
+The full soak is a release-day step (`tp_b35.py --cycles 10000`), already run
+and recorded above, and the docstring says which was used.
 
 ### Integration stage E — averaging engine live, status reads 0x0000
 
