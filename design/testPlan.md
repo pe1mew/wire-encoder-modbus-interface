@@ -186,7 +186,7 @@ Run these first. TP-A01 is the item gating the PCB.
 | **TP-A00** | §4.4.4 | **Run this before TP-A01.** Verify the rig before trusting any reading from it: R5 continuity to 0 V, R6 to the summing node, R10 **absent**. Then unplug both sensor outputs from R8/R9 and measure PC4. | **≤ 5 counts (≈0.016 V).** *(Executed 2026-08-08 — **FOUND TWO FAULTS**: R10 still fitted and R5 floating. Every measurement taken before the fix was of a circuit that was neither the schematic nor a divider, and all of it was discarded. This row earned its place on first use — and again afterwards, when its own criterion caught the MCU pull-up on PC4 that had survived every rig fix. Passed on the fourth attempt at −20 mV.)* |
 | ~~**TP-A01**~~ | TDS §6, §4.4.4 | **WITHDRAWN 2026-08-08 — there is no leakage to heat.** The 33 µA it was written to characterise was the MCU's pull-up on PC4, not the sensors, which move PC4 by 0.9 mV between connected and disconnected. Retained here only so the withdrawal is visible. Original procedure: Disconnect sensor B. With sensor A powered and inactive, record PC4 at room temperature. Warm the sensor body by ~20 °C (hot air, low; measure the case). Record PC4 every 5 °C. | PC4 rises by **less than 30 %** over the sweep → the 35 µA is an internal bleeder, §4.4 stands. A steep climb → junction leakage, and §4.4.2's values need re-deriving with a smaller `Rs` and a lighter load. **Record the curve, not just the verdict.** |
 | **TP-A02** | §4.4.3 | With both sensors connected and powered, measure PC4 in all three states: neither active, each one active separately, both active. | Within **±5 %** of −0.019 / 1.291 / 2.210 V. *(Executed 2026-08-08, final set: −0.019 / 1.291 / 1.292 / 2.210. `Von` = 23.09 V from three independent routes agreeing to 0.2 %.)* |
-| **TP-A03** | §4.4.4 | Sweep the sensor supply 20.4 → 27.6 V. Record PC4 for one-active and both-active at each end. | One active ≤ 462 counts and both active ≥ 582 counts, i.e. the 522 threshold is not crossed from either side. |
+| **TP-A03** | §4.4.4 | Sweep the sensor supply 20.4 → 27.6 V. Record PC4 for one-active and both-active at each end. | One active ≤ 462 counts and both active ≥ 582 counts, i.e. the 522 threshold is not crossed from either side. **BLOCKED 2026-08-08 — no adjustable PSU available.** This matters more than a skipped row usually would: the ±15 % supply margin is the *tightest number in the design* (≈60 counts at `SW_TH_BOTH`) and it is currently **calculated, not measured**. It also leaves open whether the 1.01 V output drop is constant or scales with the rail, which is what the sweep would have settled. Needs a bench supply, or a series element to drop the rail for the low end. |
 | **TP-A04** | FR-E21 | Apply **+27.6 V** to each J4 pin in turn for 60 s. Measure the current into PA2. | ≤ **4 mA** (CH32V003 absolute maximum, datasheet §3.2). Device undamaged; the wiper reads correctly after removal. |
 | **TP-A05** | FR-E21, §4.6.1 | Measure the mid-scale wiper code with D3 fitted and unfitted, at room temperature and at +70 °C. | Difference ≤ **1 count**. This is the PESD5V0S1BA leakage figure no datasheet answers at 3.3 V and +70 °C. |
 | **TP-A06** | §4.3, FR-E11 | With the draw-wire at mid-travel, verify the wiper is fed from 3V3 and that PA2 tracks it ratiometrically: vary 3V3 by ±5 % and observe the *ratio*. | The wiper/3V3 ratio changes by < 0.2 %. Confirms nothing has broken ratiometric operation. |
@@ -308,11 +308,14 @@ show we know about them.
 
 ## 9. Known gaps in this plan
 
-- **The raw-master scripts do not exist yet.** The *rig* is specified (§3.2)
-  and `m2k_smoke.py` proves the M2K link, but nothing in `software/hil/`
-  composes Modbus frames. That is now the single biggest thing between this
-  plan and executing Group B — and it is a scripting job against a documented
-  bench, not an unsolved problem.
+- ~~The raw-master scripts do not exist yet.~~ **Written 2026-08-08.**
+  `software/hil/modbus_rtu_codec.py` (framing, CRC, 8N1 codec) is pure Python
+  and passes 20/20 host tests; `software/hil/m2k_master.py` drives it from M2K
+  DIO. The transport is smoke-tested against a real M2K — open, configure,
+  push, capture, and the transmitted buffer decodes back to the exact frame.
+  **What remains is physical**: the second MAX3485 has to be wired per §3.2,
+  and `m2k_master.py --selftest` is the ten-second proof it is alive before
+  any Group B row is attempted.
 - ~~The Saleae is not connected yet.~~ **Resolved 2026-08-08** — the Logic16
   is visible over the MCP bridge (`94BAD48182A91BFD`). TP-B14, TP-B15 and
   TP-B24 can use it directly, with the M2K driving as raw master.
