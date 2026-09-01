@@ -5,7 +5,7 @@
 | Document | Product-firmware integration plan and results |
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
-| Status | **Stages A–F complete** (skeleton, board bring-up, register image + persistence, and now the phase-1 encoder driver `we.c` plus the measurement service `meas_open.c`). All measurement registers are live, status reads 0x0000 on a healthy device, and the acceptance suite is green (8 passed). Remaining: the FR-MB07 categorisation decision, TP-A03/TP-B23 blocked on an adjustable PSU, and Group C's stage-D-dependent rows now unblocked but not yet all run. |
+| Status | **Stages A–F complete** (skeleton, board bring-up, register image + persistence, and now the phase-1 encoder driver `we.c`, the measurement service `meas_open.c` and the averaging engine `avg.c`). All measurement registers are live, status reads 0x0000 on a healthy device, and the acceptance suite is green (8 passed). Remaining: the FR-MB07 categorisation decision, TP-A03/TP-B23 blocked on an adjustable PSU, and Group C's stage-D-dependent rows now unblocked but not yet all run. |
 | Related docs | `design/TDS.md` v0.3, `design/softwareArchitecture.md`, `design/driverDevelopment.md`, `software/hil/README.md` |
 
 ## 1. Purpose

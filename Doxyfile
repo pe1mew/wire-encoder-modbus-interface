@@ -11,7 +11,7 @@
 #---------------------------------------------------------------------------
 PROJECT_NAME           = "Wire Encoder Modbus Interface"
 PROJECT_BRIEF          = "CH32V003 Modbus RTU window-opening sensor — draw-wire potentiometer"
-PROJECT_NUMBER         = "firmware unreleased (TDS v0.3)"
+PROJECT_NUMBER         = "firmware unreleased (TDS v0.6, integration stages A-F complete)"
 OUTPUT_DIRECTORY       = documentation/doxygen
 
 #---------------------------------------------------------------------------

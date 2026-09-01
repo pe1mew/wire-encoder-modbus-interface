@@ -14,13 +14,62 @@ holds measured evidence.
 
 ---
 
-### Writing Python through a shell heredoc, three times in one session (2026-09-01)
+### A driver written to a stale header comment instead of the requirement (2026-09-01)
+**Problem**: `we.c` configured the ADC sample time to **73 cycles**. FR-E12
+requires **≥241**. The violation shipped, ran on hardware, passed every
+measurement test, and was only found when Group C read the requirement directly.
+**Root cause**: The driver was written to `we.h`'s front-end note, which said
+"≥71-cycle sample time for the 10 kΩ source impedance". That figure is the one
+FR-E12 explicitly supersedes *and names as superseded* — FR-E21's R11 puts 10 kΩ
+in series, so the DC source is 12.5 kΩ, above what 71 was chosen for.
+**Why it was missed**: the **same header** also described a five-state supervised
+ladder that had not existed since the PNP change, and that was caught on sight —
+because it contradicted the circuit visibly. The sample time did not. It read as
+a considered engineering number, and a considered number in a header looks
+exactly like a considered number in a requirement.
+**Fix**: 241 cycles, and the ADC clock raised HCLK/8 → HCLK/4 to keep
+`we_sample` inside the per-pass blocking budget. Both header notes corrected
+with the date and the reason.
+**Pattern**: **a header comment is not a requirement.** When a driver header
+restates a numeric constraint, the requirement is the source of truth and the
+header is a copy that has already drifted once. Read the FR before coding to the
+comment — especially when the comment sounds authoritative.
+
+---
+
+### The blocking budget nobody wrote down (2026-09-01)
+**Problem**: The first integration-stage-D build silently dropped **9.7 % of
+Modbus requests** — 271 served of 300 — with `30009` (CRC errors) **unmoved**.
+**Root cause**: `mb_rx_service` polls a **single-byte USART register** from the
+main loop, and FR-MB24 discards a frame on overrun. So **any main-loop pass
+longer than one character time (11 bits / 9600 = 1.146 ms) loses a byte** — and
+an overrun is *not* a CRC error, so the counter that would normally shout stays
+silent. `we_sample` blocked ~1.25 ms alone and shared a pass with
+`we_switch_sample` for ~1.48 ms.
+**Fix**: pull settle 500 → 150 µs (derived: τ = 40 µs for an open wiper, so
+150 µs is 3.75 τ), and the wiper and divider now sample on alternate ticks so no
+pass pays for both. 500/500 served afterwards.
+**The trap**: this budget appears in **no requirement and no design document**.
+FR-E12 even weighs its own cost against the *measurement window* (≥100 ms),
+which is the right comparison for throughput and the wrong one for a polled
+receiver. It is invisible until something exceeds it, and exceeding it fails
+silently.
+**Rule**: in this firmware, **no main-loop call may block for a character time**.
+It is now stated with its arithmetic in `we.c` and `meas_open.c`. Any new work in
+that loop needs the sum redone, not estimated.
+
+---
+
+### Writing Python through a shell heredoc, FOUR times in one session (2026-09-01)
 **Problem**: A `python - <<'PYEOF'` block that edits a source file wrote a
 literal newline where `\n` was intended, producing `print(f"` followed by a real
-line break — an unterminated string literal. It happened three times on
-2026-09-01, most expensively when the broken file was a 10 000-cycle soak
-launched into the background: it died on the syntax error immediately and the
-failure was only noticed when the task notification arrived.
+line break — an unterminated string literal. It happened **four times** on
+2026-09-01. The two expensive ones: a 10 000-cycle soak launched into the
+background that died on the syntax error immediately, and — after the rule below
+had already been written down — an FR-E07 test that was syntactically dead while
+the operator physically reconnected and disconnected the wiper for it. **That
+one wasted a bench action, which is the only cost here that cannot be redone for
+free.**
 **Root cause**: Escape sequences pass through two layers — the shell heredoc and
 the Python string literal that contains the generated code. `"\\n"` inside a
 generating script is a backslash-n in the *generated* file, which is what is
@@ -37,6 +86,10 @@ occurrence was caught in seconds this way; the second cost a background launch.
 **Pattern**: a background job that exits within seconds of launch has almost
 certainly failed to start, not finished. Check its output before assuming it is
 running.
+**And the reason it recurred after being logged**: writing the rule down does not
+enforce it. The enforcement is `ast.parse` **before** anything depends on the
+file — and before asking a person to do something at the bench, syntax-check and
+smoke-run first. A test that needs a human action gets one attempt per action.
 
 ---
 
@@ -255,7 +308,7 @@ Recurrences that have earned a standing rule.
 
 ### A test that blames the device must first rule out the instrument
 
-Promoted after this happened **four times in one bench session** (2026-09-01),
+Promoted after this happened **seven times in one bench session** (2026-09-01),
 each time reporting a defect in the DUT that did not exist:
 
 | Row | Reported | Actually |
@@ -263,7 +316,15 @@ each time reporting a defect in the DUT that did not exist:
 | FR-MB20 latency | 11.85 ms | **4.08 ms** — the origin was taken from RX, where our own frame does not appear |
 | TP-B32 (FR-MB04) | FAIL, −6.5 ms release lag | PASS — a magnitude threshold split one drive window into one fragment per bit |
 | TP-B35 (FR-S16) | FAIL, 4 captures "implicate the TX clock" | PASS — truncated captures have edges too, and were filed under the DUT's fault |
-| TP-B20 (FR-S39) | one round "corrupt" | not corrupt — the operator simply had not switched power back on |
+| TP-B20 (FR-S39) | one round "corrupt" | not corrupt — the operator had not switched power back on yet |
+| FR-E07 hold | FAIL, "18 s" | the test timed its own first poll against a device already faulted |
+| FR-E16 isolation | FAIL, 88 counts | wiper drift between transitions; the question was correlation, not range |
+| FR-E04 offset | FAIL, 6578 vs 7078 | a race that read the value *before* the write took effect |
+
+Three of those seven were **statistic-choice errors**: a range where a
+correlation was needed, an edge-to-edge delta spanning seconds of drift, and a
+span where per-transition movement was the question. Picking the wrong statistic
+does not look like a bug — it produces a number, and the number is wrong.
 
 Every one had the same shape: **a verdict was computed before the measurement's
 own sanity check was applied.** In each case the check existed and was cheap:
@@ -290,6 +351,33 @@ Concrete rules:
   unmeasurable quantity says nothing about whether the device met it. Report
   BLOCKED or INCONCLUSIVE, so a limitation of the rig can never be read later
   as a defect in the product.
+
+### A copy of a requirement has already drifted once — read the original
+
+Promoted after `we.h` misled the driver **twice in one file**, in opposite ways:
+
+- **Caught on sight**: it described `we_switch_sample` as reading a five-state
+  supervised ladder with an end-of-line resistor. That circuit had not existed
+  since the PNP change of 2026-08-29, and the contradiction with §4.4 was
+  visible immediately.
+- **Missed, and shipped**: it said "≥71-cycle sample time". FR-E12 requires
+  **≥241** and explicitly names 71 as the value it supersedes. The driver was
+  written to the comment, ran on hardware, and passed every measurement test.
+
+The difference is instructive. A stale *description* contradicts the thing it
+describes and gets caught. A stale **number** does not contradict anything
+visible — it reads as a considered engineering value, because it once was one.
+
+**Rule: when a header, comment or design note restates a numeric constraint,
+open the requirement.** The comment is a copy, and a copy in a file that has
+drifted once has no claim to being current. This applies with most force to
+exactly the values that look most authoritative.
+
+Corollary, from the same day: `design/testPlan.md` cited the wrong requirement
+for four rows, and a **mis-citing row satisfies a traceability check while
+testing something else** — FR-S02 looked covered until the row citing it was
+deleted. "Is every requirement cited?" is a weaker question than "does the row
+exercise what it cites?", and only the second one is worth the name.
 
 ### If a measurement does not fit the model, suspect the rig before refitting
 

@@ -50,12 +50,18 @@ flash (`pio`) → stimulate (ADALM2000 / libm2k) → observe (Saleae Logic 2 MCP
 | `modbus_rtu_codec.py` | Modbus RTU framing, CRC-16 and the 8N1 bit codec — **pure Python, no instrument** | library, **20/20 host tests pass** |
 | `test_modbus_rtu_codec.py` | Host tests for the above: CRC vs an independent implementation over 2000 vectors, the published `01 03 00 00 00 0A` → `C5 CD` vector, byte order, exception decoding, UART round-trips | `python software/hil/test_modbus_rtu_codec.py` |
 | `m2k_master.py` | **Raw RS-485 Modbus master** bit-banged from M2K DIO through a second MAX3485. `--selftest` for the static DE/DI proof | **run against the DUT 2026-09-01** — link up, 1000-poll latency measured |
-| `we_check.py` | Encoder driver phase-1 matrix (`driverDevelopment.md` §3.3) — divider-fed linearity, stability, fault rows | **to be written** |
-| `mb_check.py` | Modbus RTU protocol matrix (TDS §2) against this register map | **to be written** — port from the source project and retarget the addresses |
-| `regs_check.py` | Full TDS §2.7/§2.8 register read/write matrix | **to be written** |
-| `endswitch_check.py` | FR-E14/E15/E16 rows: the five §4.4 ladder bands, 20 ms debounce, status bits 3/4 | **to be written** |
-| `persist_check.py` | FR-S39 holding persistence across a watchdog reset (`*_test` build) | **to be written** |
-| `version_check.py` | FR-S32 chain: `version.h` ↔ `RELEASES.md` ↔ flashed DUT | **to be written** |
+| `group_b.py` | **Group B protocol matrix** (TDS §2) — 21 rows, 34 checks. Reads holdings as-found and restores them atomically in a `finally`, with a crash-safe stash for a killed run | **PASS** 2026-09-01 |
+| `group_c.py` | **Group C measurement matrix** — FR-E04 scaling driven by the calibration against a fixed wiper, both mounting senses, both clamps; FR-S24, FR-E05, FR-E09, FR-E20 | **11/11 PASS** 2026-09-01 |
+| `stage_d.py` | FR-E02 publish cadence, FR-E03 stability, FR-S30 window abort | **6/6 PASS** 2026-09-01 |
+| `fr_e07.py` | FR-E07 wiper fault machine, both directions. Times the hold from 30011, because the hold is invisible in 30001 by design | **PASS** 2026-09-01 |
+| `fr_e14.py` | FR-E14/E16 end-switch classification, all three §4.4.3 states, plus the opening-path isolation check | **PASS** 2026-09-01 |
+| `tp_b20.py` | FR-S39 torn-write test — power cut during a burst of flash writes | **ACCEPTED at 13/20 cycles** 2026-09-01 |
+| `tp_b21_b22.py` | FR-S20 watchdog recovery and FR-S21 post-reset state. **Needs the `encoder_test` build** | **PASS** 2026-09-01 |
+| `tp_b24.py` | FR-S19 no-boot-banner — listens across a power cycle with the master released | **PASS** 2026-09-01 |
+| `tp_b32.py` | FR-MB04 DE timing, measured from the bus drive envelope rather than a probe on PC2 | **PASS** 2026-09-01 |
+| `tp_b33_b34.py` | FR-MB28 quantity limits and FR-MB24 malformed-frame handling | **PASS** 2026-09-01 |
+| `tp_b35.py` | FR-S16/FR-MB23 soak and the FR-MB20/21 latency histogram | **PASS** 10 000 cycles 2026-09-01 |
+| `power_cycle.py` | TP-B02/B04/B19 helper: arm → operator cycles power → check | **PASS** 2026-09-01 |
 
 **First job when a board exists:** run `smoke_test.py`, then
 `blinky_check.py` and `uart_check.py`. That is the ten-minute proof that
