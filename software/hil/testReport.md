@@ -492,6 +492,51 @@ none of them were the DUT:
    corrupt on that basis; the result was discarded, not counted against the
    device.
 
+### The window emulator arrived — four movement rows closed
+
+The rig from [`design/windowEmulator.md`](../../design/windowEmulator.md) is
+built. Driven by hand through a full traverse, it closed four requirements that
+had been blocked since integration stage D.
+
+**The traverse itself is the headline.** From the closed stop to the open stop:
+
+| | Closed | Open |
+|---|---|---|
+| 30005 raw | **0** | **1022** |
+| 30001 opening | **0** | **9990** (999.0 mm) |
+| Status | bit 3 set (at stop) | bit 3 set (at stop) |
+
+The wiper spans essentially the entire 10-bit range against the default
+calibration of 40005 = 0 / 40006 = 1023 — a 1-count shortfall at the top. The
+draw-wire front-end and the register defaults agree without adjustment.
+
+| Row | Result |
+|---|---|
+| **FR-E10** | **PASS** — 30012 went both signs (+1095 opening, −1378 closing, 0.1 mm/s) and the sign agreed with the direction of change in **604 of 604** steps |
+| **FR-E14** | **PASS** — bit 3 set at each stop and cleared on leaving it, under real carriage motion rather than a target waved at a sensor |
+| **FR-E08** | **PASS** — the envelope spanned the full 999.0 mm traverse |
+| **FR-E17** | **PASS** — 30001 refreshed every **250–1000 ms** while moving, against a 1000 ms window |
+
+**FR-E17 first reported FAIL, and the metric was wrong.** It measured the gap
+between 30001 **changes** across the whole log and found 41 s — but the carriage
+sat still for 98 s of the run, and a stationary window republishes the *same
+value* every window. That is a refresh, not a stall. FR-E17 bounds how **old** a
+value is, not how long since it last differed, and the metric could not tell the
+two apart. Restricted to spans where the carriage was genuinely moving, the
+worst refresh interval is 1000 ms — exactly one window.
+
+This is the same family as the FR-E16 isolation error earlier: **the wrong
+statistic produces a number, and the number is wrong.** Three of these now, all
+in tests I wrote, all reporting a defect that was not there.
+
+**FR-E03 is measurable but not judged.** Observed travel **999.0 mm**. Closing
+it needs that compared against the rig's own position readout (EM-M06) — the one
+requirement here with no reference available to the suite.
+
+**Still outstanding after this:** FR-E01 (needs a power cycle at a known
+opening), FR-E18/E19 (teach handshake — both stops are now reachable, so this is
+newly runnable), FR-E15 (needs an injected 5 ms bounce).
+
 ### Group C — the measurement rows, 11 pass 0 fail
 
 Unblocked by stages D and E. Most of Group C needs the window to **move**, which
