@@ -243,7 +243,49 @@ class M2kMaster:
         finally:
             self.dig.stopAcquisition()
         line = [(w >> DIO_RX) & 1 for w in raw]
+        # Keep the sample stream. Response latency (FR-MB20/21) has to be
+        # measured from edges, not inferred from when Python got the bytes —
+        # and when a frame does not decode, the raw line is the only honest
+        # evidence of what was on the wire.
+        self.last_capture = line
         return codec.decode_uart(line, SAMPLES_PER_BIT)
+
+    def response_latency_s(self, frame_len: int) -> tuple[float, float] | None:
+        """Seconds from the end of our last stop bit to the reply's first edge.
+
+        Returns `(latency, disagreement)` in seconds, or None if the capture
+        holds no reply. `frame_len` is the length in bytes of the frame we sent.
+
+        FR-MB20 is a wire timing, so it is measured from edges rather than from
+        when Python got the bytes. The awkward part is locating the end of *our
+        own* frame: R̄Ē is tied to DE, so the receiver is disabled while we
+        transmit and what appears on RO is a leak, not a faithful copy. Two
+        independent derivations are therefore computed and their difference
+        returned, so a caller can refuse to believe a number whose two routes
+        disagree:
+
+          A. from the LAST edge before the idle gap, assumed to be the final
+             character's start bit — wrong if the leak dropped that edge;
+          B. from the FIRST edge in the capture plus the known frame length,
+             which uses the buffer we built rather than what came back.
+
+        They agree only if the leak reproduced our frame faithfully at both
+        ends. When they do, the measurement stands on both legs.
+        """
+        line = getattr(self, "last_capture", None)
+        if not line:
+            return None
+        edges = [i for i in range(1, len(line)) if line[i - 1] == 1 and not line[i]]
+        if not edges:
+            return None
+        gap_min = int(2 * T35_S * SAMPLE_RATE)
+        for a, b in zip(edges, edges[1:]):
+            if b - a >= gap_min:
+                end_a = a + 10 * SAMPLES_PER_BIT
+                end_b = edges[0] + 10 * SAMPLES_PER_BIT * frame_len
+                return ((b - end_b) / SAMPLE_RATE,
+                        abs(end_a - end_b) / SAMPLE_RATE)
+        return None
 
     @staticmethod
     def _extract(data: bytes, unit: int) -> bytes:

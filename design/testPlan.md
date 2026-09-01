@@ -40,7 +40,7 @@ That is not a wiring problem and no amount of bench work fixes it. It means:
 | | Rows | Status |
 |---|---|---|
 | **Group A** — electrical, no firmware | 9 | **Runnable now** |
-| **Group B** — protocol and lifecycle | 24 | **Runnable now**, on a flashed device |
+| **Group B** — protocol and lifecycle | 32 | **Runnable now**, on a flashed device |
 | **Group C** — measurement, switches, teach | 26 | **Blocked** until integration stage D |
 | **Group D** — environmental | 5 | Needs a climate chamber |
 | **Group E** — build-time | 3 | Already automated in `software/hil/acceptance/` |
@@ -220,19 +220,27 @@ than assume: the address, the register map and the build differ.
 
 | ID | Traces to | Procedure | Pass criterion |
 |---|---|---|---|
-| TP-B06 | FR-MB01…03 | FC03, FC04, FC06, FC16 against valid addresses. | Correct data, correct byte count, correct CRC. |
+| TP-B06 | FR-MB01, FR-MB08, FR-MB09, FR-MB10, FR-MB11 | FC03, FC04, FC06, FC16 against valid addresses. | Correct data, correct byte count, correct CRC. |
 | TP-B07 | FR-MB25 | Inspect data byte order and CRC byte order on the wire. | **Big-endian data, little-endian CRC.** |
 | TP-B08 | FR-MB19 | Write out-of-range values to each holding register (below min, above max). | Exception code 3; the stored value is unchanged. |
 | TP-B09 | FR-MB22 | FC16 spanning 40002 and 40003 such that the pair is valid but each intermediate state is not. | Accepted — atomicity judged on the result, not the intermediate. |
 | TP-B10 | FR-E06 | FC16 writing 40005/40006 closer than `CAL_MIN_SPAN` (64 counts). | Rejected, both values unchanged. |
-| TP-B11 | FR-MB05/06 | Frame addressed to another device; broadcast frame. | Silence for the former; action without response for the latter, per FR-MB06. |
-| TP-B12 | FR-MB09 | Frame with a deliberately bad CRC. | No response; **30009 increments by exactly one.** |
-| TP-B13 | FR-MB10 | Read a non-existent register address. | Exception code 2. |
+| TP-B11 | FR-MB05, FR-MB06 | Frame addressed to another device (247); broadcast frame (address 0) carrying a write whose effect is observable. | Silence for both. The broadcast must **not be executed** — a follow-up unicast read shows the register unchanged. This is a deliberate deviation from Modbus-over-Serial-Line V1.02 §2.2, stated in FR-MB06; the pass criterion is *not* the specification's. |
+| TP-B12 | FR-MB02, FR-S35 | Frame with a deliberately bad CRC. | No response within 200 ms; **30009 increments by exactly one** and 30010 does not move. |
+| TP-B13 | FR-MB13 | Read a non-existent register address. | Exception code 2. |
 | TP-B14 | FR-MB20/21 | Logic-analyser capture of turnaround and response latency across 1000 polls. | Within the FR-MB20/21 budgets; histogram recorded. |
-| TP-B15 | FR-MB23 | Inter-frame idle (t3.5) at 9600 baud. | Frames separated correctly; no merged frames under back-to-back polling. |
+| TP-B15 | FR-MB03 | Inter-frame idle (t3.5) at 9600 baud. | Frames separated correctly; no merged frames under back-to-back polling. |
 | TP-B16 | FR-S35 | Read 30009 and 30010 after a known mix of good and bad frames. | Counts match the frames sent exactly. |
-| TP-B17 | §2.7 | Read every input register 30001–30015. | All present; measurement registers return their FR-S23 pre-first-window value (see §6 — this is expected, not a fault). |
-| TP-B18 | §2.8 | Read every holding register 40001–40007 after a factory reset. | Defaults match §2.8: 0 / 1000 / 10 / 10000 / 0 / 1023 / 0. |
+| TP-B17 | §2.7, FR-MB08 | Read every input register 30001–30015. | All present; measurement registers return their FR-S23 pre-first-window value (see §6 — this is expected, not a fault). |
+| TP-B18 | §2.8, FR-MB09 | Read every holding register 40001–40007 after a factory reset. | Defaults match §2.8: 0 / 1000 / 10 / 10000 / 0 / 1023 / 0. |
+| TP-B25 | FR-MB12 | Send FC01, FC02, FC05 to the DUT's address. | Exception **01** for each. |
+| TP-B26 | FR-MB14 | FC04 read whose range spans the map edge (e.g. 12 registers from 30010). | Exception **02** for the whole request; **no partial data**. |
+| TP-B27 | FR-MB15 | FC06 write to an unimplemented holding address (raw 0x0020). | Exception **02**; no register changes. |
+| TP-B28 | FR-MB30 | Capture the FC06 and FC16 success responses. | FC06 response is **byte-identical** to the request. FC16 response PDU after the function code is exactly starting-address then quantity — **not** the register data. |
+| TP-B29 | FR-MB21 | 1 000 FC04 requests at 50 ms spacing, default configuration. | ≥95 % of responses start within **15 ms** of the last request byte; 100 % within the FR-MB20 100 ms limit. Histogram recorded. |
+| TP-B30 | FR-MB18 | Collect every exception response produced across Group B. | Only codes **01, 02, 03** ever appear. No vendor-specific codes. |
+| TP-B31 | FR-MB17 | Every valid addressed request issued in Group B. | The DUT is never silent on one — a normal or exception response always arrives. |
+| TP-B32 | FR-MB04 | Scope PC2 (DE) against the bus during a response. | DE asserted before the first transmitted byte and released after the last, each within one character time (≈1.15 ms). |
 
 ### 5.3 Persistence, watchdog and supply
 

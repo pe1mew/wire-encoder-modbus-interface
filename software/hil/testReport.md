@@ -13,7 +13,7 @@ and verdict.
 
 ---
 
-## Status: Group A opened, 2 rows executed, Modbus link up
+## Status: Group A opened, Group B largely executed, Modbus link up
 
 Hardware exists and has been exercised. What follows is what was actually
 run — everything else in the plan is still untouched.
@@ -63,7 +63,8 @@ first was on the DUT's side of the wire, and none of them was the DUT.
    the stop bit is the only edge to lock to.
 
 **Measured:** DUT UART **0.8 % fast** at 9600 (9.92 bit times per character,
-960 kSa/s capture). Evidence for FR-MB20 when TP-B15 runs.
+960 kSa/s capture) — evidence for FR-MB01's 9600 8N1, well inside the ±5 %
+a UART receiver tolerates.
 
 **First full read**, unit 40, FC04, 15 registers:
 
@@ -100,12 +101,132 @@ to *both active* stepped 50 mV where the topology requires it to roughly
 double. A model needing a new free parameter for every measurement is
 describing the wrong circuit — check the rig before refitting.
 
+### Group B — 33 checks pass, 0 fail
+
+Driven by [`group_b.py`](group_b.py) against the `encoder` build at unit 40.
+Holding registers are read as-found and restored with a single atomic FC16 in a
+`finally` block, so the run leaves no state behind; the restore is verified and
+reported.
+
+| Row | Traces to | Result |
+|---|---|---|
+| TP-B01 | FR-S01 | **PASS** — `0x0101`, build `0x01`, firmware 1. |
+| TP-B06 | FR-MB01, 08–11 | **PASS** — FC03, FC04, FC06, FC16 all accepted. |
+| TP-B07 | FR-MB25 | **PASS** — request data big-endian, CRC little-endian, response data big-endian (verified on 30008, whose two bytes differ; 30007 is `0x0101` and would have proven nothing). |
+| TP-B08 | FR-MB19 | **PASS** — 40002 = 65000 and = 50 both exception 03, register unchanged at 1000. **Not clamped.** |
+| TP-B09 | FR-MB22 | **PASS** — FC16 with one valid and one invalid value rejected whole, neither register moved. |
+| TP-B10 | FR-E06 | **PASS** — 40005/40006 at span 63 rejected with exception 03, both unchanged. |
+| TP-B11 | FR-MB05 | **PASS** — FC04 to address 247: silent. |
+| TP-B11 | FR-MB06 | **PASS** — broadcast FC06 silent **and not executed**; 40001 unmoved. |
+| TP-B12 | FR-MB02, FR-S35 | **PASS** — corrupted CRC: silent, 30009 +1, 30010 +0. |
+| TP-B13 | FR-MB13 | **PASS** — input 0x0020: exception 02. |
+| TP-B15 | FR-MB03 | **PASS** — both halves; see below. |
+| TP-B17 | FR-MB08 | **PASS** — 30001–30015 all readable. |
+| TP-B18 | FR-MB09 | **PASS** — 40001–40007 all readable, and equal to the §2.8 defaults `0 / 1000 / 10 / 10000 / 0 / 1023 / 0`. |
+| TP-B25 | FR-MB12 | **PASS** — FC01, FC02, FC05 each exception 01. |
+| TP-B26 | FR-MB14 | **PASS** — 12 registers from 0x000A spans the map edge: exception 02, no partial data. |
+| TP-B27 | FR-MB15 | **PASS** — FC06 to holding 0x0020: exception 02. |
+| TP-B28 | FR-MB30 | **PASS** — FC06 response byte-identical to the request; FC16 response PDU is `00 01 00 02`, address and quantity, not data. |
+| TP-B30 | FR-MB18 | **PASS** — only codes 01, 02, 03 observed across the whole group. |
+| TP-B31 | FR-MB17 | **PASS** — never silent on a valid addressed request. |
+| TP-B16 | FR-S35 | added after the recorded run; see below. |
+| TP-B14 / TP-B29 | FR-MB20 / FR-MB21 | **PROVISIONAL** — see below. |
+| TP-B05 | FR-S34 | **NOT RUN** in the recorded run. |
+
+**FR-MB06 is a deliberate deviation and it holds.** Broadcast writes are
+ignored rather than executed, against Modbus-over-Serial-Line V1.02 §2.2. The
+test plan's original pass criterion said "action without response", which is the
+specification's behaviour and not this device's; the row was corrected to match
+FR-MB06 before it was run, and both halves — no reply *and* no side effect —
+were checked.
+
+**FR-S31 admits only one invalid ordering.** TP-B09 asks for a register pair
+that is valid while the intermediate states are not. Since the constraint is
+(40003 × 1000) ≥ 40002, making *both* orderings invalid would require 40003 to
+be simultaneously larger and smaller than its previous value. The row therefore
+exercises the one direction that is genuinely unreachable register-by-register:
+40002 = 60000 with 40003 = 60, accepted as a pair, where writing 40002 first
+would violate FR-S31.
+
+### Timing rows — provisional, and why
+
+**TP-B14 / TP-B29 (FR-MB20, FR-MB21) — PROVISIONAL, not evidence yet.**
+Measured over 60 polls: **median 11.85 ms, p95 11.91 ms, max 11.91 ms**, none
+unanswered. That is inside FR-MB20's 100 ms limit and FR-MB21's 15 ms
+preference, and the ~4 ms of it is simply the t3.5 the DUT must observe before
+the frame is complete.
+
+It is recorded as provisional because of *how* it was derived, not what it
+says. FR-MB20 is a wire timing, so the measurement needs the instant our own
+last stop bit ends — but R̄Ē is tied to DE on the raw master, so the receiver is
+disabled while we transmit and what appears on RO is a leak, not a faithful
+copy of our frame. The figure above located our frame's end from a single route
+(the last edge before the idle gap, assumed to be the final character's start
+bit), which is wrong if the leak dropped that edge.
+
+`response_latency_s` now derives that instant **two independent ways** — from
+the last edge before the gap, and from the first edge plus the known frame
+length — and returns their disagreement alongside the result. Samples whose two
+routes differ by more than a character time are discarded rather than averaged
+in. The row is re-run under that cross-check before any number here is treated
+as evidence.
+
+The 0.06 ms spread across 60 polls is also worth a second look on its own: it
+is tight enough to deserve confirmation rather than trust, by this project's own
+rule about readings that agree too well.
+
+**TP-B05 (FR-S34) — NOT RUN** in the run recorded here. It needs the 10-minute
+observation the plan specifies (`--uptime-minutes 10`). The reset-to-zero half
+of the row belongs to TP-B04's power cycle and is not covered by the master.
+
+**TP-B16 (FR-S35)** was added after this run: 20 good frames and 10 corrupted
+ones, with both counters checked against the exact mix. The recorded run proved
+FR-S35 only incidentally, inside TP-B12 and TP-B15.
+
+### One row of mine was measuring the wrong thing
+
+TP-B15's second half originally sent two requests to the DUT's own address 6 ms
+apart in a single burst, expecting both to be served. It failed. The DUT was
+correct: **response latency is ~11.9 ms**, so it began replying to the first
+frame while the master was still transmitting the second. That is bus
+contention, and no frame-boundary requirement is under test in it.
+
+Rebuilt so the two halves are isolated: the **first** frame is addressed to unit
+247, which FR-MB05 obliges the DUT to ignore, so nothing contends and only
+boundary detection is exercised.
+
+- **2.01 ms gap (below t3.5)** → merged into one frame, CRC fails: 30009 +1,
+  30010 +0. Correct.
+- **6.02 ms gap (above t3.5)** → split into two frames, the 247 one ignored and
+  ours served: 30009 +0, 30010 +1. Correct.
+
+Two further failures in the first run were an arithmetic error of mine, not the
+DUT: exactly **one** served request falls between two consecutive counter reads,
+and the code subtracted that increment twice.
+
 ### Not yet run
 
 Group A rows TP-A03…A09; all of Group C (blocked on integration stage D).
-Group B is now **unblocked** — the raw master exists and the DUT answers it.
-TP-A03 stays **BLOCKED**: no adjustable supply on this bench, so the ±15 %
-margin (60 counts, the tightest number in the design) remains calculated.
+
+Group B rows that need the bench rather than the master — none of them are
+blocked on software:
+
+| Row | Traces to | Needs |
+|---|---|---|
+| TP-B02 | FR-S03, FR-MB07 | JP6 open then bridged, power cycle between |
+| TP-B03 | FR-S02 | power-on to first valid response |
+| TP-B04 | FR-S32 | 30007 across a power cycle |
+| TP-B19 | FR-S39 | holdings survive a power cycle |
+| TP-B20 | FR-S39 | 20 power cycles, some interrupted mid-write |
+| TP-B21 | FR-S20 | the `encoder_test` build, magic `0xDEAD` to holding 0x00FF |
+| TP-B22 | FR-S21 | register state after that watchdog reset |
+| TP-B24 | FR-S18/S19 | bus capture from the instant of power-on |
+| TP-B32 | FR-MB04 | DE timing against the bus, on the scope |
+
+**BLOCKED, both for the same reason:** TP-A03 and **TP-B23** (FR-S22, PVD)
+need an adjustable supply, and this bench has a fixed one. The ±15 % supply
+margin — 60 counts, the tightest number in the design — therefore remains
+calculated, not measured.
 
 ---
 
