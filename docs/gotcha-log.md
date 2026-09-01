@@ -14,6 +14,32 @@ holds measured evidence.
 
 ---
 
+### Writing Python through a shell heredoc, three times in one session (2026-09-01)
+**Problem**: A `python - <<'PYEOF'` block that edits a source file wrote a
+literal newline where `\n` was intended, producing `print(f"` followed by a real
+line break — an unterminated string literal. It happened three times on
+2026-09-01, most expensively when the broken file was a 10 000-cycle soak
+launched into the background: it died on the syntax error immediately and the
+failure was only noticed when the task notification arrived.
+**Root cause**: Escape sequences pass through two layers — the shell heredoc and
+the Python string literal that contains the generated code. `"\\n"` inside a
+generating script is a backslash-n in the *generated* file, which is what is
+wanted, but a single `\n` becomes a real newline at generation time and breaks
+the output. The two layers are easy to lose track of, and the failure is silent
+until the generated file is parsed.
+**Fix**: **Use the Edit and Write tools to modify source files, not heredocs.**
+They have no escaping layer at all. Reserve `python - <<'PYEOF'` for
+computation that prints results, never for emitting code containing string
+literals.
+**Second fix, cheaper than the first**: `ast.parse` the file immediately after
+generating it and before launching anything that depends on it. The third
+occurrence was caught in seconds this way; the second cost a background launch.
+**Pattern**: a background job that exits within seconds of launch has almost
+certainly failed to start, not finished. Check its output before assuming it is
+running.
+
+---
+
 ### A threshold that fragmented one drive window into one per bit (2026-09-01)
 **Problem**: TP-B32 (FR-MB04) reported **FAIL** — DE release lagging the last
 stop bit by **−6.5 ms**, a nonsense figure, and a drive window of 1.04 ms.
