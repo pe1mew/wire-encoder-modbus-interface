@@ -492,6 +492,81 @@ none of them were the DUT:
    corrupt on that basis; the result was discarded, not counted against the
    device.
 
+### Group C — the measurement rows, 11 pass 0 fail
+
+Unblocked by stages D and E. Most of Group C needs the window to **move**, which
+this bench cannot do on demand — but FR-E04 is a pure function of the raw code
+and the three calibration registers, so driving the **calibration** against a
+fixed wiper exercises the whole path end to end with a prediction computed
+independently in the test.
+
+| Case | raw | 30001 | expected |
+|---|---|---|---|
+| Nominal, wiper mid-travel | 673 | 6578 | 6578 |
+| Offset applied at the closed point | 673 | 7078 | 7078 |
+| Travel doubled | 673 | 13157 | 13157 |
+| **Reversed mounting** (40006 < 40005) | 673 | **3424** | 3424 |
+| Narrow span around the wiper | 673 | 7300 | 7300 |
+| Wiper below the closed point | 673 | **0** | clamps to the offset |
+| Wiper above the open point | 673 | **10000** | clamps to full travel |
+
+Plus **FR-S24** (30001 is the scaling of the *same response's* 30005),
+**FR-E20** (30015 is the percentage of the instantaneous opening), **FR-E09**
+(30005 unmoved by a 5× travel change — it really is pre-scaling), and **FR-E05**
+(a calibration violating FR-E06's minimum span is rejected and changes nothing).
+
+**The reversed-mounting case earns its place.** FR-E04's calibration points
+define *direction*, so a sensor mounted backwards must calibrate as naturally as
+one mounted forwards. Same raw code, inverted opening, exact match.
+
+**Two failures first, both mine, and one of them was the device being right:**
+
+- **A race in the test.** After writing a calibration it polled for status bit 0
+  to *clear* — but bit 0 had not been *set* yet, so the loop exited on the first
+  poll and read the pre-write value. It reported an FR-E04 failure against
+  correct firmware. The fix waits for the bit to be set **and then** cleared.
+- **An invalid test case.** The reversed-mounting case first used `40006 = 0`,
+  but §2.8 gives 40006 the range **1–65535**. Exception 03 was the correct
+  answer to a bad request of mine.
+
+**Still not covered, and none of it is a software gap:**
+
+| Requirement | Needs |
+|---|---|
+| FR-E01 absolute after reset | a power cycle with the window held at a known opening |
+| FR-E03 end-to-end accuracy | the window emulator (`design/windowEmulator.md`, specified but not built) |
+| FR-E10 signed movement rate | the window actually moving |
+| FR-E17 maximum age of a read | a changing value, to have staleness to bound |
+| FR-E18/E19 teach handshake | both stops physically reached |
+| FR-E15 20 ms debounce | a 5 ms bounce injected electrically |
+
+### FR-E12 was violated by the driver I wrote, and the header is why
+
+`we.c` configured the ADC sample time to **73 cycles**. **FR-E12 requires ≥241.**
+
+The driver was written to `we.h`'s front-end note, which said "≥71-cycle sample
+time" — the value FR-E12 explicitly supersedes and names as superseded: FR-E21's
+R11 puts 10 kΩ in series, so the DC source is 12.5 kΩ, above what 71 was chosen
+for. **The same header also carried a stale five-state ladder description, which
+was caught on sight. This one was not**, because it looked like a considered
+number rather than an obvious contradiction.
+
+Fixed to 241 cycles — and that forced a second change. At the HCLK/8 ADC clock
+the requirement's own cost note (~42 µs per conversion) would make `we_sample`
+1056 µs, inside the 1.146 ms per-pass blocking budget by **8 %**, which is not
+margin. The ADC clock went to **HCLK/4 = 12 MHz** (the part's ceiling is 14 MHz),
+giving ~21 µs per conversion and `we_sample` ~678 µs. FR-E12 specifies a *cycle
+count*, which 241 at 12 MHz satisfies exactly as at 6 MHz; 20 µs of acquisition
+against a 12.5 kΩ source into a ~10 pF sample capacitor is ~160 time constants.
+
+FR-E12's own cost note weighs the conversion against the **measurement window**
+(≥100 ms) — the right comparison for throughput, and the wrong one for a polled
+UART receiver. That budget exists nowhere in the requirements.
+
+**Verified after the change:** FR-E12's own criterion — 32 consecutive reads at
+a fixed position spanning **2 counts** against a ≤3 limit — plus 400/400
+requests served with latency unchanged at 4.09 ms median.
+
 ### Integration stage F — the acceptance suite (NFR-TST01)
 
 `software/hil/acceptance/` run against the flashed release build:

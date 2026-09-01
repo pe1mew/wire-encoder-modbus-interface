@@ -14,10 +14,10 @@
  * @warning **Blocking budget: one Modbus character, 1.146 ms.** The Modbus
  *          receiver is polled from the same loop against a single-byte USART
  *          register, so a longer pass loses a byte and FR-MB24 discards the
- *          frame. Measured costs: a conversion is ~14 us (73-cycle sample at
- *          6 MHz), so we_switch_sample is ~224 us and we_sample is ~552 us
- *          (two 150 us settles plus 18 conversions). Both fit; adding work to
- *          either needs this arithmetic redone, not a guess.
+ *          frame. Measured costs: a conversion is ~21 us (241-cycle sample at
+ *          12 MHz, FR-E12), so we_switch_sample is ~336 us and we_sample is
+ *          ~678 us (two 150 us settles plus 18 conversions). Both fit; adding
+ *          work to either needs this arithmetic redone, not a guess.
  */
 #include "ch32fun.h"
 #include "we.h"
@@ -35,13 +35,21 @@
  */
 #define WE_CONVERSIONS 16u
 
-/* Sample time selector 6 = 73 ADC cycles. FR-E11's front-end note asks for
- * >=71 cycles at the 10 kOhm source impedance; 73 is the next setting up. With
- * the ADC clock at HCLK/8 = 6 MHz that is ~12 us of acquisition, against a
- * worst-case source of ~12.5 kOhm (pot mid-track 2.5 k + R11 10 k) into the
- * sample-and-hold — tens of time constants, with C6 (1 nF) at the pin acting
- * as a local charge reservoir on top. */
-#define WE_SMP_73_CYCLES 6u
+/* Sample time selector 7 = 241 ADC cycles, per FR-E12.
+ *
+ * NOT 73. we.h's front-end note still says ">=71 cycles" and this driver was
+ * first written to it — but FR-E12 raised the floor to 241 and names the 71
+ * setting as the one it supersedes: FR-E21's R11 puts 10 kOhm in series, so the
+ * DC source is 12.5 kOhm at mid-track, above the 10 kOhm the old setting was
+ * chosen for. The header was stale in the same way its five-state ladder
+ * description was; one was caught on sight and this one was not.
+ *
+ * The requirement costs it at ~42 us per conversion, which assumes an HCLK/8
+ * ADC clock. At that rate we_sample() would take 18 x 42 + 300 = 1056 us —
+ * inside the 1.146 ms per-pass blocking budget by only 8 %, which is not
+ * margin. See WE_PULL_SETTLE_US: exceeding that budget drops Modbus frames
+ * silently. */
+#define WE_SMP_241_CYCLES 7u
 
 /* ---- FR-E07 wiper integrity ----------------------------------------------
  * Toggle PA2's internal pull between two conversions and watch how far the
@@ -147,17 +155,29 @@ void we_init(void)
 	funPinMode(PA2, GPIO_CNF_IN_ANALOG);
 	funPinMode(PC4, GPIO_CNF_IN_ANALOG);
 
-	/* ADC clock: HCLK/8 = 6 MHz, inside the part's 14 MHz ceiling with margin.
-	 * Conversion time is irrelevant here — we are nowhere near a rate limit and
-	 * a slower ADC clock is easier on a high-impedance source. */
-	RCC->CFGR0 = (RCC->CFGR0 & ~RCC_ADCPRE) | RCC_ADCPRE_DIV8_2;
+	/* ADC clock: HCLK/4 = 12 MHz, inside the part's 14 MHz ceiling.
+	 *
+	 * Raised from HCLK/8 when the sample time went to FR-E12's 241 cycles. The
+	 * requirement specifies a CYCLE COUNT, not a duration, so 241 cycles at
+	 * 12 MHz satisfies it exactly as 241 at 6 MHz does — and the physics still
+	 * holds with room to spare: 20 us of acquisition against a 12.5 kOhm source
+	 * into the ~10 pF sample capacitor is about 160 time constants, with C6
+	 * (1 nF) at the pin as a local reservoir on top.
+	 *
+	 * What it buys is the per-pass blocking budget. At 6 MHz a conversion is
+	 * ~42 us and we_sample() would run 1056 us against a 1.146 ms limit; at
+	 * 12 MHz it is ~21 us and we_sample() runs ~678 us. FR-E12's own cost note
+	 * ("~42 us per conversion against a >=100 ms window") weighs the conversion
+	 * against the MEASUREMENT WINDOW, which is the right comparison for
+	 * throughput and the wrong one for a polled UART receiver. */
+	RCC->CFGR0 = (RCC->CFGR0 & ~RCC_ADCPRE) | RCC_ADCPRE_DIV4;
 
 	/* 73-cycle sample time on both channels. SAMPTR2 holds channels 0..9,
 	 * three bits each. */
 	ADC1->SAMPTR2 = (ADC1->SAMPTR2 &
 	                 ~((7u << (3u * WE_CH_WIPER)) | (7u << (3u * WE_CH_SWITCH))))
-	                | (WE_SMP_73_CYCLES << (3u * WE_CH_WIPER))
-	                | (WE_SMP_73_CYCLES << (3u * WE_CH_SWITCH));
+	                | (WE_SMP_241_CYCLES << (3u * WE_CH_WIPER))
+	                | (WE_SMP_241_CYCLES << (3u * WE_CH_SWITCH));
 
 	/* Single channel per conversion; the channel is selected per read. */
 	ADC1->RSQR1 = 0;

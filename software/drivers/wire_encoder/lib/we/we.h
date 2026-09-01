@@ -9,8 +9,10 @@
  * spring-loaded drum pays out a wire and turns a 10 kΩ potentiometer, so the
  * wiper voltage is a direct, absolute measure of the window opening. It is read
  * on PA2 with the 10-bit ADC in ratiometric mode referenced to VDD — ≥16
- * conversions folded per sample, ≥71-cycle sample time for the 10 kΩ source
- * impedance (FR-E11/E12/E13). This is the same front-end topology the sibling
+ * conversions folded per sample, **≥241-cycle** sample time (FR-E11/E12/E13).
+ * *(Corrected 2026-09-01: this said ≥71 cycles, the value FR-E12 explicitly
+ * supersedes — R11's 10 kΩ puts the DC source at 12.5 kΩ, above what 71 was
+ * chosen for. The driver was written to the stale figure and had to be fixed.)* This is the same front-end topology the sibling
  * `windmeters-modbus-interface` project uses for its vane, and its driver is
  * the reference implementation.
  *
@@ -107,8 +109,8 @@ uint16_t we_raw_max(void);
  * @note Call at ≥10 Hz (FR-E14). The conversion is short enough that the
  *       ladder can be sampled every measurement window alongside the wiper
  *       without threatening the FR-MB20 response budget.
- * @note Same ≥71-cycle sample time as the wiper: the divider's source impedance
- *       is ≤5 kΩ, inside the 10 kΩ that setting targets.
+ * @note Same ≥241-cycle sample time as the wiper (FR-E12); the divider's source
+ *       impedance is ≤5 kΩ, well inside what that setting covers.
  */
 bool we_switch_sample(uint16_t *raw);
 
