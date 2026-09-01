@@ -102,7 +102,7 @@ to *both active* stepped 50 mV where the topology requires it to roughly
 double. A model needing a new free parameter for every measurement is
 describing the wrong circuit — check the rig before refitting.
 
-### Group B — 69 checks pass, 0 fail
+### Group B — 72 checks pass, 0 fail
 
 Driven by [`group_b.py`](group_b.py) against the `encoder` build at unit 40.
 Holding registers are read as-found and restored with a single atomic FC16 in a
@@ -139,6 +139,7 @@ reported.
 | TP-B19 | FR-S39 | **PASS** — all six persisted holdings survived exactly; 40007 correctly did not. |
 | TP-B21 | FR-S20 | **PASS** — watchdog recovered the stalled loop in **1.20 s**, no power cycle (budget 3 s). |
 | TP-B22 | FR-S21 | **PASS** — six post-reset state checks; see below. |
+| TP-B35 | FR-S16, FR-MB23 | **PASS** — 10 000 cycles, 30009 unchanged, 30010 advanced by exactly 10 000. See below. |
 | TP-B24 | FR-S19 | **PASS** (partial scope) — bus never left the fail-safe bias across a real power cycle; peak 0.296 V. See below. |
 | TP-B33 | FR-MB28 | **PASS** — FC03/FC04 quantity 0 and 126, FC16 quantity 0 and byte-count mismatch: exception 03 each, nothing modified. |
 | TP-B34 | FR-MB24 | **PASS** — a 514-byte burst and a corrupt frame both discarded, and the device still answered the next valid request. |
@@ -380,6 +381,58 @@ than observed at the instant it happens.
   capture can show DE low from the first instant (clause 1); it cannot show the
   PC1 latch order, ADC self-calibration before the first conversion, or USART
   enabled last (clauses 2–4).
+
+### TP-B35 — the 10 000-cycle soak, and a classifier that accused the DUT
+
+**PASS.** FR-S16 (internal 48 MHz HSI, no crystal) and FR-MB23 (RX discarded
+while transmitting), over the full 10 000 request/response cycles the
+requirement specifies:
+
+| | Result |
+|---|---|
+| 30009 — framing/CRC errors | **0** |
+| 30010 — served | advanced by **exactly 10 000** |
+| Latency | median **4.08 ms**, max **4.14 ms** over 9 998 samples |
+| Master-side misses | 2 of 10 000 (0.02 %), both attributable to the rig |
+
+The verdict rests on the **DUT's own counters**, not on what the script believes
+it sent. FR-MB23 rides along: the DUT's RO and DI are tied on the shared PD6
+node, so a device that ever evaluated its own transmission as an incoming frame
+could not hold a zero CRC-error count across 10 000 exchanges.
+
+**A first run reported FAIL. That was my classifier, not the device.**
+
+It counted any missed reply whose capture contained *edges* as implicating the
+DUT's transmit clock — 4 of them, at a 40 ms capture window. But a **truncated**
+capture also contains edges and also fails to decode, so clipped frames were
+being filed under "the DUT's fault". Re-run at 80 ms, where the ~21 ms of
+content cannot run off the end:
+
+| | 40 ms window | 80 ms window |
+|---|---|---|
+| Total misses | 8 (0.08 %) | 2 (0.02 %) |
+| empty — reply outside the window | 4 | 1 |
+| clipped — ran into the window end | — | 1 |
+| **suspect — would implicate the DUT** | **4** | **0** |
+
+Doubling the window took the suspect class to zero and the overall miss rate
+down fourfold. The four were truncation.
+
+The classifier now separates *empty*, *clipped* and *suspect* by where the last
+edge sits relative to the window end, and only *suspect* counts against the
+verdict. Two independent arguments also stood against a genuine clock fault
+before the re-run, though neither would have settled it: the DUT's measured
+**0.8 % fast** is consistent and far inside the ±5 % a per-character resyncing
+decoder tolerates, and a tolerance problem degrades steadily rather than
+producing four isolated failures among 9 992 clean ones.
+
+**This is the third time in this session a FAIL was published against the DUT
+for an analysis error** — after TP-B32's drive-window fragmentation and the
+retracted 11.85 ms latency. The common shape: a measurement was believed before
+its own sanity check was applied. The rule earned here is narrower and worth
+keeping: **a verdict that blames the device must first rule out the instrument,
+and "my capture contains something" is not evidence that the something is
+correct.**
 
 ### The test build is indistinguishable from the release build
 
