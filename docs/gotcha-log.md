@@ -14,6 +14,29 @@ holds measured evidence.
 
 ---
 
+### A threshold that fragmented one drive window into one per bit (2026-09-01)
+**Problem**: TP-B32 (FR-MB04) reported **FAIL** — DE release lagging the last
+stop bit by **−6.5 ms**, a nonsense figure, and a drive window of 1.04 ms.
+**Root cause**: The DUT's drive window was found by thresholding |A−B| above
+0.7 V. But the RS-485 differential swings ±1.4 V and **passes through zero at
+every bit transition**, so the magnitude dips under the threshold for a few
+microseconds on each edge. One drive window became one fragment per bit, and
+the code measured the last fragment.
+**Fix**: Threshold first, then **close** gaps shorter than two bit times before
+taking spans. No genuine release is that brief — t3.5 alone is 35 bit times.
+With that, DE lead measures 3–82 µs and lag 3–6 µs against a 1 146 µs budget,
+and the row passes with ~14x margin.
+**The tell, printed and ignored**: the measured drive window was **1.04 ms for a
+frame that takes 7.29 ms**. The frame length was known before the measurement
+started. **When a measurement has a duration you can predict from first
+principles, check the prediction before reading the verdict** — the same rule
+that caught the retracted latency figure one row earlier, missed one row later.
+**Also**: a FAIL was published against the DUT for what was entirely an analysis
+error. A row should not return FAIL until its own sanity checks pass; until then
+the honest verdict is that nothing has been measured.
+
+---
+
 ### A latency figure that was wrong by 3x and looked entirely reasonable (2026-09-01)
 **Problem**: FR-MB20 response latency was measured at **11.85 ms** — inside the
 100 ms limit, inside FR-MB21's 15 ms preference, and tightly distributed at

@@ -101,7 +101,7 @@ to *both active* stepped 50 mV where the topology requires it to roughly
 double. A model needing a new free parameter for every measurement is
 describing the wrong circuit — check the rig before refitting.
 
-### Group B — 34 checks pass, 0 fail
+### Group B — 35 checks pass, 0 fail
 
 Driven by [`group_b.py`](group_b.py) against the `encoder` build at unit 40.
 Holding registers are read as-found and restored with a single atomic FC16 in a
@@ -133,6 +133,7 @@ reported.
 | TP-B14 | FR-MB20 | **PASS** — n=1000, median **4.08 ms**, max **4.14 ms** against a 100 ms limit. See below. |
 | TP-B29 | FR-MB21 | **PASS** — **100 %** within 15 ms, where 95 % is required. |
 | TP-B05 | FR-S34 | **PASS** — monotonic over 10 min, 605 s counted in 606 s (0.18 %). |
+| TP-B32 | FR-MB04 | **PASS** — DE asserted 3–82 µs before the first start bit, released 3–6 µs after the last stop bit, against a 1 146 µs budget. See below. |
 
 **TP-B18 is PARTIAL, and the reason is easy to miss.** The registers read
 exactly the §2.8 defaults — but only because they were *written* back to those
@@ -233,6 +234,55 @@ Two further failures in the first run were an arithmetic error of mine, not the
 DUT: exactly **one** served request falls between two consecutive counter reads,
 and the code subtracted that increment twice.
 
+### TP-B32 — DE timing, measured without the analyser
+
+**PASS**, n = 10. FR-MB04 allows one character time (11 bits = **1 146 µs**) on
+each side:
+
+| | Measured | Budget | Margin |
+|---|---|---|---|
+| DE asserted **before** the first start bit | 3–82 µs (median 42) | 1 146 µs | ~14x |
+| DE released **after** the last stop bit | 3–6 µs (median 5) | 1 146 µs | ~200x |
+| Drive window | 7.30–7.38 ms | a 7-byte frame at 9600 is **7.29 ms** | — |
+
+That last row is the check that the measurement is real, not the result.
+
+**Measured from the bus, not from PC2.** The DUT drives the bus only while its
+DE is asserted, so the drive envelope sits on the M2K's analog inputs on the
+same timebase as the data — driven is ±1.4 V, released is the 0.26 V fail-safe
+bias. A magnitude threshold finds the drive window and a sign change finds each
+data bit, with no second probe and no second instrument's clock to reconcile.
+
+**A first FAIL on this row is retracted — it was my analysis, not the DUT.**
+The differential swings ±1.4 V and passes through zero at *every bit
+transition*, so |A−B| dips below the threshold for a few microseconds on each
+edge. Requiring long runs above the threshold chopped one drive window into one
+fragment per bit; the code then measured the last fragment and reported a
+7.29 ms frame as a **1.04 ms drive window**, with a nonsensical −6.5 ms release
+lag. The fix is to threshold first and then *close* gaps shorter than two bit
+times — no real release is that brief, since t3.5 alone is 35 bit times.
+
+**The tell was in the output the whole time**: a 7-byte frame cannot occupy a
+1.04 ms drive window. Checking the measured frame duration against the frame
+length it must have would have caught it before the verdict was written, and
+that check is now printed on every run.
+
+### The Saleae could not be driven programmatically
+
+TP-B32 was written for the Logic16, and the probe map already routes ch1 to the
+DUT's DE. It could not be used: **the MCP bridge cannot set a Logic16's input
+voltage range.** `start_capture` requires `logicDeviceConfiguration`, its schema
+accepts only the scalars 1.2, 1.8 and 3.3, and the backend rejects all three —
+it wants a range (`1.8V to 3.6V` or `3.6V to 5.0V`). Omitting the threshold is
+the only way a capture starts, and the default applied then does not match 3.3 V
+logic: a 20-second capture across four channels returned **zero transitions**,
+including on the master's own DI, which was certainly switching.
+
+The analyser itself is fine — the Logic 2 UI shows correct traffic on the same
+probes. Any Saleae row (TP-B24, and TP-B32 if it is ever re-run there) has to be
+captured from the UI and the `.sal` loaded afterwards, not driven end-to-end
+from here.
+
 ### Not yet run
 
 Group A rows TP-A03…A09; all of Group C (blocked on integration stage D).
@@ -250,7 +300,6 @@ blocked on software:
 | TP-B21 | FR-S20 | the `encoder_test` build, magic `0xDEAD` to holding 0x00FF |
 | TP-B22 | FR-S21 | register state after that watchdog reset |
 | TP-B24 | FR-S18/S19 | bus capture from the instant of power-on — **the Saleae is now connected, so this is runnable** |
-| TP-B32 | FR-MB04 | DUT DE (PC2) timing against the bus — likewise runnable now the analyser is on the bench |
 | TP-B18 | §2.8, FR-MB09 | **PARTIAL** until a factory-reset procedure exists (plan §7) |
 
 **BLOCKED, both for the same reason:** TP-A03 and **TP-B23** (FR-S22, PVD)

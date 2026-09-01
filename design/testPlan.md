@@ -154,11 +154,20 @@ throughout; Saleae threshold set for **3.3 V logic**.
 | **3** | raw-master `DE/RE` | **M2K DIO1** | When the master released. Paired with ch 1 this measures t3.5 directly. |
 | GND | — | **U2 pin 5** or **J2 pin 1** | J2 is a 2.54 mm header and is the tidiest ground tap. |
 
+**The Saleae cannot be driven end-to-end from the MCP bridge.** `start_capture`
+requires a `logicDeviceConfiguration`, but a Logic16's input voltage range
+cannot be set through it — the schema accepts only 1.2 / 1.8 / 3.3 and the
+backend rejects all three, wanting a range (`1.8V to 3.6V`, `3.6V to 5.0V`).
+Omitting it starts a capture whose default range does not match 3.3 V logic and
+which records **no transitions at all**. Capture Saleae rows from the Logic 2
+UI and load the `.sal` afterwards.
+
 `U2` is the MAX3485 in SOIC-8, easier to reach than the MCU's SOP-8 — though
 on the breadboard either is a jumper away.
 
-**Do not put the Saleae on RS-485 A/B.** They are differential and, with the
-20 k bias pair and the 120 Ω termination, idle near mid-rail; a digital
+**Do not put the Saleae on RS-485 A/B.** They are differential and idle only
+**258 mV** apart on the 680 Ω fail-safe bias (the 120 Ω termination was removed
+and the original 20 k bias pair replaced — see the test report); a digital
 threshold there yields frame boundaries at best. **A/B → M2K scope 1+/2+** for
 the analog wire view. The split is deliberate: Saleae observes logic, M2K
 observes the line.
@@ -240,7 +249,7 @@ than assume: the address, the register map and the build differ.
 | TP-B29 | FR-MB21 | 1 000 FC04 requests at 50 ms spacing, default configuration. | ≥95 % of responses start within **15 ms** of the last request byte; 100 % within the FR-MB20 100 ms limit. Histogram recorded. |
 | TP-B30 | FR-MB18 | Collect every exception response produced across Group B. | Only codes **01, 02, 03** ever appear. No vendor-specific codes. |
 | TP-B31 | FR-MB17 | Every valid addressed request issued in Group B. | The DUT is never silent on one — a normal or exception response always arrives. |
-| TP-B32 | FR-MB04 | Scope PC2 (DE) against the bus during a response. | DE asserted before the first transmitted byte and released after the last, each within one character time (≈1.15 ms). |
+| TP-B32 | FR-MB04 | Measure the DUT's **drive envelope** on the M2K analog inputs (`tp_b32.py`) — driven is ±1.4 V, released is the 0.26 V fail-safe bias, so DE is observable from the bus without probing PC2. Sanity-check the measured drive window against the frame length before believing any margin. | DE asserted before the first start bit and released after the last stop bit, each within one character time (11 bits = **1.146 ms**). |
 
 ### 5.3 Persistence, watchdog and supply
 
