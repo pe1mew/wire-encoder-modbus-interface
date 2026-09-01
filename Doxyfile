@@ -23,6 +23,7 @@ INPUT                  = README.md \
                          software/hil/README.md \
                          software/hil/testReport.md \
                          changelog.md \
+                         docs/gotcha-log.md \
                          contributing.md \
                          code_of_conduct.md \
                          license.md \

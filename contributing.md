@@ -21,6 +21,11 @@ Thank you for considering contributing to this project! Please follow the guidel
   index [`design/README.md`](design/README.md).
 - **Firmware changes**: the release build must build — `pio run` from
   `software/firmware/` (resource ceilings are enforced by the build).
+- **When something surprises you, write it down**: add an entry to
+  [`docs/gotcha-log.md`](docs/gotcha-log.md). Most of what has cost this
+  project real time is invisible afterwards — a corrected schematic looks
+  exactly like one that was never wrong. The log's promoted patterns are
+  standing rules worth reading *before* you touch the bench or a `.kicad_sch`.
 - **Hardware-verified changes**: if you have the bench (WCH-LinkE, Saleae
   Logic 2, ADALM2000 — see [`software/hil/README.md`](software/hil/README.md)),
   run the acceptance suite against the flashed device:

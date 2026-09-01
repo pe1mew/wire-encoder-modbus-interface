@@ -7,27 +7,55 @@ and verdict.
 | Field | Value |
 |---|---|
 | Project | `wire-encoder-modbus-interface` |
-| Last updated | 2026-07-28 |
-| DUT | *none — no hardware exists yet* |
+| Last updated | 2026-08-08 |
+| DUT | **Breadboard build.** CH32V003J4M6, MAX3485, 3RG4023-3AB00 ×2, draw-wire front-end. No PCB. |
+| Plan | [`design/testPlan.md`](../../design/testPlan.md) v0.1 |
 
 ---
 
-## Status: no tests executed
+## Status: Group A opened, 2 rows executed
 
-**Nothing in this repository has been run on hardware.** There is no board,
-no flashed device, and no bench standing for this project.
+Hardware exists and has been exercised. What follows is what was actually
+run — everything else in the plan is still untouched.
 
-What that means when reading the rest of the repository:
+### Executed
 
-- The verification claims in `software/drivers/modbus_rtu/README.md` and in
-  `design/driverDevelopment.md` §4 are **inherited** from the sibling
-  [`windmeters-modbus-interface`](https://github.com/pe1mew/windmeters-modbus-interface)
-  project. They were earned on the same MCU, the same framework and the
-  same driver source — but on that project's hardware. Its evidence lives
-  in that repository's `software/hil/testReport.md`.
-- Carrying code across a repository boundary carries the code, not the
-  evidence. `mb.c`, `board.c` and `persist.c` are proven; *this device*
-  running them is not.
+| Row | Date | Result |
+|---|---|---|
+| — | 2026-08-08 | **Debug link verified.** WCH-LinkE `mode:RV version 2.15`; target examined, `XLEN=32`, `misa=0x40800014` (RV32EC + vendor) — the expected silicon. Reached via OpenOCD, not minichlink: the `WCHLink_A64` driver blocks libusb (`LIBUSB_ERROR_ACCESS`), and `upload_protocol = wch-link` routes through OpenOCD anyway, so no Zadig/WinUSB step is needed. |
+| — | 2026-08-08 | **Firmware flashed.** `encoder` build byte `0x01`, 3 704 B flash / 620 B RAM. `** Verified OK **`. |
+| **TP-A00** | 2026-08-08 | **PASS, on the fourth attempt.** −20 mV with both sensor outputs disconnected. It failed three times first, and each failure was a real fault it was written to catch: **R10 still fitted**, **R5 floating**, a third wiring error, and finally **the MCU's internal pull-up on PC4** (~47 kΩ to 3V3, sourcing ~63 µA into the summing node) left enabled by the image previously in flash. |
+| **TP-A02** | 2026-08-08 | **PASS.** Bands at `Von` = 23.09 V: **−0.019 V / 1.291 V / 2.210 V** = **0 / 401 / 686 counts**. `Von` confirmed by three independent routes agreeing to **0.2 %** — each switch alone, and both together (which carries no leakage term). Rail 24.1 V. |
+| **TP-A01** | 2026-08-08 | **WITHDRAWN.** Written to characterise a 33 µA sensor leakage that turned out not to exist — it was the PC4 pull-up. Connecting or disconnecting both sensors moves PC4 by 0.9 mV. |
+
+### What TP-A02 established
+
+- **Output drop is 1.01 V at 290 µA**, not zero. The datasheet's ≤2.5 V is a
+  300 mA figure and does not scale to nothing at microamps.
+- **Sensor off-state leakage is below the noise floor** — far inside the 10 µA
+  allowed, and 20× better than the figure twice recorded before the rig was
+  clean.
+- **Thresholds 170 / 522**, margins 170 and 60 counts across ±15 % supply.
+- A constant **−19 mV** sits at PC4 with sensors disconnected (~4 µA sunk
+  board-side). Unexplained; 6 counts; invariant with state.
+
+### The lesson this bench day cost
+
+Three complete measurement sets were taken, fitted, documented and committed
+before the fourth revealed all three were of a circuit that did not match the
+schematic. **The tell was visible in the first set and missed:** *one active*
+to *both active* stepped 50 mV where the topology requires it to roughly
+double. A model needing a new free parameter for every measurement is
+describing the wrong circuit — check the rig before refitting.
+
+### Not yet run
+
+Group A rows TP-A03…A09, all of Group B (needs the M2K raw-master scripts,
+which do not exist), all of Group C (blocked on integration stage D).
+
+---
+
+## Inherited evidence, and what it does not cover
 
 ## What goes here first
 

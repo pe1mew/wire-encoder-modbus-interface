@@ -58,7 +58,7 @@ image will produce failures that mean nothing.
 | Bench PSU, 24 V, adjustable ±15 % | Sensor supply and PoE feed; Group A and the tolerance rows | Required |
 | DMM, 4½ digit | Node voltages; 1 mV resolution matters for the §4.4 bands | Required |
 | **ADALM2000 (M2K)** | Stimulus *and* the raw RS-485 master — see §3.2. Also a 16-channel logic analyser, so it covers the timing rows until the Saleae arrives | **Available.** `libm2k` in a Python 3.11 venv; `m2k_smoke.py` proves the link |
-| Saleae Logic16 | Preferred observer for the FR-MB timing rows | **Later.** MCP bridge refused connection 2026-08-08; the M2K substitutes meanwhile |
+| Saleae Logic16 | Preferred observer for the FR-MB timing rows | **Connected and verified** 2026-08-08 — device `94BAD48182A91BFD` visible over the Logic 2 MCP bridge. Probe map in §3.5 |
 | Hot-air source or hair dryer | TP-A01, the blocking leakage test | Required |
 | Precision resistance box or 10 k pot | Stands in for the draw-wire in Group C | For stage D |
 
@@ -313,10 +313,9 @@ show we know about them.
   composes Modbus frames. That is now the single biggest thing between this
   plan and executing Group B — and it is a scripting job against a documented
   bench, not an unsolved problem.
-- **The Saleae is not connected yet.** Its MCP bridge refused connection on
-  2026-08-08. The M2K's 16-channel logic analyser covers TP-B14, TP-B15 and
-  TP-B24 in the meantime; move them to the Saleae when it arrives if its
-  protocol decoders make the captures easier to read.
+- ~~The Saleae is not connected yet.~~ **Resolved 2026-08-08** — the Logic16
+  is visible over the MCP bridge (`94BAD48182A91BFD`). TP-B14, TP-B15 and
+  TP-B24 can use it directly, with the M2K driving as raw master.
 - **No factory-reset procedure is defined**, which TP-B18 assumes. Erasing
   flash via the LinkE is the obvious route; write it down once it is used.
 - **Every Group A result carries a breadboard caveat** until it is repeated on
