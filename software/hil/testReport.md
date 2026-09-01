@@ -101,7 +101,7 @@ to *both active* stepped 50 mV where the topology requires it to roughly
 double. A model needing a new free parameter for every measurement is
 describing the wrong circuit — check the rig before refitting.
 
-### Group B — 58 checks pass, 0 fail
+### Group B — 68 checks pass, 0 fail
 
 Driven by [`group_b.py`](group_b.py) against the `encoder` build at unit 40.
 Holding registers are read as-found and restored with a single atomic FC16 in a
@@ -138,6 +138,8 @@ reported.
 | TP-B19 | FR-S39 | **PASS** — all six persisted holdings survived exactly; 40007 correctly did not. |
 | TP-B21 | FR-S20 | **PASS** — watchdog recovered the stalled loop in **1.20 s**, no power cycle (budget 3 s). |
 | TP-B22 | FR-S21 | **PASS** — six post-reset state checks; see below. |
+| TP-B33 | FR-MB28 | **PASS** — FC03/FC04 quantity 0 and 126, FC16 quantity 0 and byte-count mismatch: exception 03 each, nothing modified. |
+| TP-B34 | FR-MB24 | **PASS** — a 514-byte burst and a corrupt frame both discarded, and the device still answered the next valid request. |
 | TP-B32 | FR-MB04 | **PASS** — DE asserted 3–82 µs before the first start bit, released 3–6 µs after the last stop bit, against a 1 146 µs budget. See below. |
 
 **TP-B18 is PARTIAL, and the reason is easy to miss.** The registers read
@@ -334,6 +336,90 @@ effect until reset.
 three, and `30009`/`30010` came back 0 and 2 (our own reads) after each boot, so
 FR-S35's reset-to-zero is confirmed repeatedly rather than once. Defaults were
 restored afterwards and the restore verified by read-back.
+
+### TP-B24 / FR-S19 — partial: quiet in steady state, boot half still untested
+
+**What is established.** With the master held released and sending nothing for
+**120 s**, the bus never left the fail-safe bias — peak differential **0.295 V**
+against a bias of ~0.26 V and a driven level of ~1.4 V. The DUT was powered and
+running throughout. So in steady state it emits nothing unprompted: no test
+bytes, no periodic chatter.
+
+**What is NOT established.** FR-S19's headline case is the *boot banner*, and no
+power cycle occurred inside either listening window. Two attempts, and both were
+reported **INCONCLUSIVE** rather than passed:
+
+| Attempt | Uptime before → after | Verdict |
+|---|---|---|
+| 45 s window | 491 → 538 s | no reset in the window |
+| 120 s window | 562 → 683 s | no reset in the window |
+
+The row requires uptime to have gone **backwards** before it will return a
+verdict. Without that guard a DUT that was quietly disconnected — or simply
+never cycled — passes perfectly, which is the same trap TP-B21 avoids by first
+proving the device actually stopped answering.
+
+**Also outside what was measured**, even once a cycle lands:
+- FR-S19's second clause — *received bytes discarded until ≥3.5 character times
+  of bus idle* — needs a partial frame delivered at the instant of boot, which
+  needs a probe on the rail to trigger from. Both scope channels are on A/B.
+- The TDS asks for **20** cycles with another master/slave pair actively
+  exchanging frames. This is one cycle on an otherwise quiet bus.
+
+The row stays open.
+
+### The citation sweep, and what it turned up
+
+Prompted by TP-B03 citing FR-S02 — a requirement about a single PCB supporting
+the device, with no bearing on boot timing. That was the third mis-citation
+found, so the whole plan was swept mechanically: every requirement the TDS
+defines, checked against every requirement the plan cites.
+
+**Before: 77 requirements defined, 55 cited. After: 77 of 77.**
+
+Six had **no row at all**. Three were testable immediately and were run:
+
+| Requirement | Was | Now |
+|---|---|---|
+| FR-MB28 quantity limits | untested | **TP-B33 — PASS** |
+| FR-MB24 malformed frames | untested | **TP-B34 — PASS** |
+| FR-S16 internal RC oscillator | untested | TP-B35 written, needs a 10 000-cycle soak |
+| FR-MB27 full map, no exception 02 | proven by TP-B17/B18 but uncited | co-cited |
+| FR-MB29 never emit exception 04 | proven by TP-B30 but uncited | co-cited |
+| FR-MB23 discard RX while transmitting | **orphaned by my own fix** — TP-B15 was moved off it to FR-MB03 | co-cited on TP-B35 |
+
+The rest were a **false alarm from shorthand**: Group C writes `FR-E01, E02,
+E03…` and TP-D01 writes `NFR-ENV01…05`, so eleven FR-E and four NFR-ENV
+requirements were cited but not machine-traceable. Spelled out. The same defect
+as the `FR-MB08…11` ellipsis fixed earlier — **abbreviations in a traceability
+column are not traceable**, and a coverage check that reads them as gaps is
+right to.
+
+**TP-B34's second half is the load-bearing one.** After a 514-byte burst and
+after a corrupt frame, the device still answered the next well-formed request.
+A device that wedges also "does not respond"; silence alone cannot tell a
+correct discard from a hang.
+
+### FR-MB28's FC16 clause cannot be exercised
+
+TP-B33 first reported a FAIL: FC16 with quantity 124 drew no response instead of
+exception 03. **That was a bad test, not a defect.**
+
+An FC16 ADU is `9 + 2N` bytes. N = 123 gives 255; **N = 124 gives 257** — past
+the 256-byte Modbus RTU maximum. FR-MB28's own threshold says ">123" for exactly
+that reason. So every frame that breaks the ">123" clause also breaks FR-MB24's
+length limit, and discarding it silently is FR-MB24 compliance. The DUT did the
+right thing and the row called it a failure.
+
+The clause is not wrong, only structurally unreachable. The reachable half of
+FR-MB28 — FC03/FC04 quantity 0 and 126, FC16 quantity 0, byte-count mismatch —
+returns exception 03 throughout. Recorded in the plan's known gaps for a
+decision: mark it unreachable in the TDS, or drop it.
+
+**One loose thread:** `30009` incremented for the over-long frames. FR-S35
+defines it as counting frames *discarded for invalid CRC-16*; a frame discarded
+for **length** arguably should not touch it. Not chased here, but it means
+30009 is a slightly broader "frames rejected" counter than FR-S35 describes.
 
 ### The test build is indistinguishable from the release build
 

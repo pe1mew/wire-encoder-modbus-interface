@@ -215,9 +215,10 @@ path.
 
 | ID | Traces to | Procedure | Pass criterion |
 |---|---|---|---|
-| TP-B01 | FR-S01 | Power on. Poll 30007 (identification). | Reports build byte `0x01` and the firmware version. One release build only. |
+| TP-B01 | FR-S32 | Power on. Poll 30007 (identification). | Reports build byte `0x01` and the firmware version, identical with the jumper open and bridged. |
+| TP-B01b | FR-S01 | Confirm the running image is the release build, not `encoder_test`. | **Cannot be done from 30007** — `BUILD_TYPE` is `0x01` in *both* builds, so the identification register cannot tell them apart. Present workaround: holding `0x00FF` is readable on the test build and returns exception 02 on the release build. **Fix:** give `encoder_test` a distinct build byte (e.g. `0x81`) so FR-S32 answers this directly. |
 | TP-B02 | FR-S03, FR-MB07 | Read the device at address 40 with JP6 open. Power down, bridge JP6, power up, read at 45. | Responds only at the expected address in each case. Changing the jumper while running has **no** effect until reset. |
-| TP-B03 | FR-S02 | Time from power-on to first valid response. | Within the FR-S02 budget. |
+| ~~TP-B03~~ | — | ~~Time from power-on to first valid response.~~ **INVALID AS WRITTEN — there is no requirement to test.** FR-S02 says *"a single hardware PCB shall support the device without modification"*; it has nothing to do with boot timing and defines no budget. No boot-time requirement exists anywhere in the TDS. | **Nothing to verify.** Either add a requirement ("shall answer a valid request within N s of power-on") and reinstate the row against it, or delete the row. Until then, boot time may be *characterised* — a measured number with no pass/fail — and that characterisation is what TP-B24's capture yields anyway. |
 | TP-B04 | FR-S32 | Read 30007 across a power cycle. | Identical both times. |
 | TP-B05 | FR-S34 | Read 30008 (uptime) at intervals over 10 min. | Monotonic, whole seconds, starts at 0 after reset. |
 
@@ -237,18 +238,21 @@ than assume: the address, the register map and the build differ.
 | TP-B11 | FR-MB05, FR-MB06 | Frame addressed to another device (247); broadcast frame (address 0) carrying a write whose effect is observable. | Silence for both. The broadcast must **not be executed** — a follow-up unicast read shows the register unchanged. This is a deliberate deviation from Modbus-over-Serial-Line V1.02 §2.2, stated in FR-MB06; the pass criterion is *not* the specification's. |
 | TP-B12 | FR-MB02, FR-S35 | Frame with a deliberately bad CRC. | No response within 200 ms; **30009 increments by exactly one** and 30010 does not move. |
 | TP-B13 | FR-MB13 | Read a non-existent register address. | Exception code 2. |
-| TP-B14 | FR-MB20/21 | Logic-analyser capture of turnaround and response latency across 1000 polls. | Within the FR-MB20/21 budgets; histogram recorded. |
+| TP-B14 | FR-MB20 | Logic-analyser capture of turnaround and response latency across 1000 polls. | Within the FR-MB20/21 budgets; histogram recorded. |
 | TP-B15 | FR-MB03 | Inter-frame idle (t3.5) at 9600 baud. | Frames separated correctly; no merged frames under back-to-back polling. |
 | TP-B16 | FR-S35 | Read 30009 and 30010 after a known mix of good and bad frames. | Counts match the frames sent exactly. |
-| TP-B17 | §2.7, FR-MB08 | Read every input register 30001–30015. | All present; measurement registers return their FR-S23 pre-first-window value (see §6 — this is expected, not a fault). |
+| TP-B17 | §2.7, FR-MB08, FR-MB27 | Read every input register 30001–30015. | All present; measurement registers return their FR-S23 pre-first-window value (see §6 — this is expected, not a fault). |
 | TP-B18 | §2.8, FR-MB09 | Read every holding register 40001–40007 after a factory reset. | Defaults match §2.8: 0 / 1000 / 10 / 10000 / 0 / 1023 / 0. **Precondition:** no factory-reset procedure is defined yet (see §7), so a run that merely finds the defaults present has not verified them. |
 | TP-B25 | FR-MB12 | Send FC01, FC02, FC05 to the DUT's address. | Exception **01** for each. |
 | TP-B26 | FR-MB14 | FC04 read whose range spans the map edge (e.g. 12 registers from 30010). | Exception **02** for the whole request; **no partial data**. |
 | TP-B27 | FR-MB15 | FC06 write to an unimplemented holding address (raw 0x0020). | Exception **02**; no register changes. |
 | TP-B28 | FR-MB30 | Capture the FC06 and FC16 success responses. | FC06 response is **byte-identical** to the request. FC16 response PDU after the function code is exactly starting-address then quantity — **not** the register data. |
 | TP-B29 | FR-MB21 | 1 000 FC04 requests at 50 ms spacing, default configuration. | ≥95 % of responses start within **15 ms** of the last request byte; 100 % within the FR-MB20 100 ms limit. Histogram recorded. |
-| TP-B30 | FR-MB18 | Collect every exception response produced across Group B. | Only codes **01, 02, 03** ever appear. No vendor-specific codes. |
+| TP-B30 | FR-MB18, FR-MB29 | Collect every exception response produced across Group B. | Only codes **01, 02, 03** ever appear. No vendor-specific codes. |
 | TP-B31 | FR-MB17 | Every valid addressed request issued in Group B. | The DUT is never silent on one — a normal or exception response always arrives. |
+| TP-B33 | FR-MB28 | FC03/FC04 with quantity **0** and **126**; FC16 with quantity **0** and with a byte-count field ≠ 2 × quantity. | Exception **03** for each; **no register modified**. FC16 quantity **>123 is not testable** — see §9. |
+| TP-B34 | FR-MB24 | Send more bytes without a t3.5 gap than the 256-byte ADU maximum; and a byte deliberately mis-framed. | Frame discarded, **no response**; the device answers the next well-formed request normally. |
+| TP-B35 | FR-S16, FR-MB23 | 10 000 request/response cycles at 9600 with no external crystal fitted. | **Zero** framing/CRC errors — 30009 unchanged, 30010 advanced by exactly 10 000. Also the standing evidence for FR-MB23: a device that evaluated its own transmission as an incoming frame could not hold a zero CRC-error count across 10 000 exchanges. |
 | TP-B32 | FR-MB04 | Measure the DUT's **drive envelope** on the M2K analog inputs (`tp_b32.py`) — driven is ±1.4 V, released is the 0.26 V fail-safe bias, so DE is observable from the bus without probing PC2. Sanity-check the measured drive window against the frame length before believing any margin. | DE asserted before the first start bit and released after the last stop bit, each within one character time (11 bits = **1.146 ms**). |
 
 ### 5.3 Persistence, watchdog and supply
@@ -260,7 +264,7 @@ than assume: the address, the register map and the build differ.
 | TP-B21 | FR-S20 | **`encoder_test` build.** Write magic `0xDEAD` to holding `0x00FF` to stall the loop. | IWDG resets the device within the FR-S20 timeout. |
 | TP-B22 | FR-S21 | After the TP-B21 reset, read all registers. | Defined state: holdings restored from flash, measurement registers at their pre-first-window values, status bits 0 and 1 set. |
 | TP-B23 | FR-S22 | Ramp the supply down slowly until PVD trips. | Device resets cleanly rather than executing at an undefined rail. |
-| TP-B24 | FR-S18/S19 | Capture the RS-485 bus from power-on with the analyser. | DE/RE is low (receiver enabled, driver off) from the first instant; no bus disturbance during boot. |
+| TP-B24 | FR-S18, FR-S19 | Capture the RS-485 bus from power-on with the analyser. | DE/RE is low (receiver enabled, driver off) from the first instant; no bus disturbance during boot. |
 
 ---
 
@@ -274,10 +278,10 @@ Blocked rows, by what unblocks them:
 
 | Unblocked by | Requirements |
 |---|---|
-| Stage D — encoder driver + measurement service | FR-E01, E02, E03, E04, E05, E07, E09, E11, E12, E13, E17, FR-S17, FR-S23, FR-S24, FR-S30, FR-S36 |
-| Stage D — switch sampling wired to `regs_publish_switches()` | FR-E14, E15, E16, FR-S33 |
-| Stage D + a calibrated rig | FR-E18, E19 (teach handshake — needs both ends actually reached) |
-| Stage E — averaging engine | FR-E06, E08, E10, E20, FR-S31 |
+| Stage D — encoder driver + measurement service | FR-E01, FR-E02, FR-E03, FR-E04, FR-E05, FR-E07, FR-E09, FR-E11, FR-E12, FR-E13, FR-E17, FR-S17, FR-S23, FR-S24, FR-S30, FR-S36 |
+| Stage D — switch sampling wired to `regs_publish_switches()` | FR-E14, FR-E15, FR-E16, FR-S33 |
+| Stage D + a calibrated rig | FR-E18, FR-E19 (teach handshake — needs both ends actually reached) |
+| Stage E — averaging engine | FR-E06, FR-E08, FR-E10, FR-E20, FR-S31 |
 
 When stage D lands, the highest-value rows are:
 
@@ -297,7 +301,7 @@ When stage D lands, the highest-value rows are:
 
 | ID | Traces to | Note |
 |---|---|---|
-| TP-D01…D05 | NFR-ENV01…05 | Climate chamber. NFR-ENV01 is now **−25…+70 °C**; the +70 °C figure is inherited from the sibling project's part set and is an assertion until this row runs. |
+| TP-D01…D05 | NFR-ENV01, NFR-ENV02, NFR-ENV03, NFR-ENV04, NFR-ENV05 | Climate chamber. NFR-ENV01 is now **−25…+70 °C**; the +70 °C figure is inherited from the sibling project's part set and is an assertion until this row runs. |
 | TP-E01 | NFR-RES01 | Automated — `software/hil/acceptance/test_builds.py`. Currently 3 704 B flash / 620 B RAM against 14 336 / 1 792 ceilings. |
 | TP-E02 | NFR-BLD01 | Automated, opt-in: `pytest -m reproducible`. |
 | TP-E03 | NFR-TST01 | Host suite: 38 cases in `software/firmware/test/test_scale.c`, all passing. |
@@ -325,6 +329,15 @@ show we know about them.
 
 ## 9. Known gaps in this plan
 
+- **FR-MB28's FC16 "quantity > 123" clause cannot be exercised.** An FC16 ADU is
+  `9 + 2N` bytes, so N = 123 gives 255 and N = 124 gives **257** — past the
+  256-byte Modbus RTU maximum. Every frame that breaks the ">123" clause also
+  breaks FR-MB24's length limit, and a device that discards it silently is
+  obeying FR-MB24 correctly. Measured 2026-09-01: the DUT does exactly that.
+  The clause is not wrong, merely unreachable; the reachable half of FR-MB28
+  (FC03/FC04 quantity 0 and >125, FC16 quantity 0, byte-count mismatch) all
+  return exception 03 as required. Decide whether to note the clause as
+  structurally unreachable in the TDS or drop it.
 - ~~The raw-master scripts do not exist yet.~~ **Written 2026-09-01.**
   `software/hil/modbus_rtu_codec.py` (framing, CRC, 8N1 codec) is pure Python
   and passes 20/20 host tests; `software/hil/m2k_master.py` drives it from M2K
