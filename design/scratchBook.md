@@ -1112,23 +1112,133 @@ cannot tell the installer which end to look at.
 - Both front-ends failing consistently. This is corroboration, not redundancy.
 - Anything at all before a teach.
 
+### Two geometries, and why the rig is the worst case
+
+Established 2026-09-01 from a drawing of the two installations side by side.
+Everything above assumed the rig's geometry. It is not the general one.
+
+|  | Test rig | A real window |
+|---|---|---|
+| Switch active zone | **wide** — active from the mechanical limit outward, so the carriage rests inside it | **narrow** — the carriage can come to rest *beyond* it, switch inactive |
+| Pot electrical range | ≈ the physical travel (measured raw **0–1022**) | **much wider** than the travel; the wiper never approaches either rail |
+| Physical travel vs the switches | switches sit at the ends of travel | travel extends **past both switches** |
+
+Two consequences, pulling in opposite directions.
+
+**1. Clamping is normal operation, not evidence.** The opening range is defined
+*between the switches* (both drawings label the 1000 mm that way), and the travel
+extends past them. So a window resting at its mechanical limit legitimately
+reports **0 with the switch inactive**. FR-E22's first clause — *clamped while
+the switch is inactive* — therefore fires on a **healthy** installation, not in a
+corner case but in the resting state. See the latch below.
+
+**2. The headroom makes a plausible band possible again.** Because the wiper
+never reaches either rail in a real installation, a short to 0 V or 3.3 V lands
+at a raw code **the window cannot legitimately produce**. That is directly
+detectable — and it is exactly what FR-E07's original wording meant by *"a raw
+code outside the plausible band"* before it was narrowed on 2026-09-01.
+
+**The rig is the worst case for this**, and that is worth holding onto: it spans
+raw 0–1022, so there is no headroom and no band. Anything tested only on the rig
+will understate what a real installation can detect.
+
+### FR-E24 — the plausible band, and why it may beat FR-E22
+
+A third mechanism, better suited to the real geometry than the static
+comparison:
+
+> **FR-E24 (Should) — implausible raw code.** When the calibration endpoints
+> have been established by a completed FR-E19 teach, a raw wiper code outside
+> `[raw_closed − M, raw_open + M]`, where **M = 25 % of the calibrated span**,
+> shall be reported in **status bit 6** after persisting ≥ 2 × 40002. The margin
+> exists because the window legitimately travels beyond both switches; 25 % of
+> span is far more overtravel than any installation should have, and still
+> leaves a band whenever the pot is oversized relative to the travel.
+>
+> Where the calibrated span approaches the full ADC range — as on the test rig,
+> which measured 0–1022 — the band vanishes and the check is inert. It shall not
+> report in that case. **Its sensitivity is a property of the installation, not
+> of the firmware**, and that must be said plainly rather than discovered.
+
+**Why it may be the better use of bit 6:**
+
+- It works **at rest**, and while parked beyond a switch — the states where
+  FR-E22 either says nothing useful or false-alarms.
+- It needs **no agreement between the front-ends**, so no latch, no end-region
+  state machine, and no dependence on switch geometry.
+- It catches the *shorted wiper* case directly, which is what FR-E07 gave up.
+- It is cheaper than FR-E22: two comparisons against values already in `regs.c`.
+
+**What it cannot do**, and FR-E22 could: detect a *stuck-on switch*, or a wiper
+frozen at a plausible mid-range value. The band only sees excursions outside the
+window's reachable range.
+
+### If the latch is kept anyway — how FR-E22 would have to change
+
+> Set an internal *end-region* flag when a debounced switch activation occurs;
+> clear it only when the opening returns to more than [margin] inside the
+> corresponding endpoint. Overshoot past a narrow switch then remains inside the
+> latched region and raises nothing.
+
+The cost is real: a **frozen** position never clears the latch, so a shorted
+wiper stays "consistent" and FR-E22 falls silent about it. FR-E23 still catches
+that case. So in the real geometry FR-E22 shrinks to detecting *switch active
+while the position reads mid-travel*, which is a narrow remit for a status bit.
+
+**Provisional ordering, on this evidence:** build **FR-E23** (position follows
+the carriage — works in every geometry), then **FR-E24** (plausible band — works
+wherever the installation leaves headroom), and treat **FR-E22** as optional. The
+first two need no latch and no switch-geometry assumptions between them.
+
 ### What the two bits say together
 
-Separating them earns its place in the combination, not just in each bit alone:
+Separating them earns its place in the combination, not just in each bit alone.
 
-| Bit 6 (static) | Bit 7 (dynamic) | Most likely cause |
+**Which mechanism sits behind bit 6 is now open** — see the two-geometries
+section. On the provisional ordering it is **FR-E24, the plausible band**, not
+FR-E22. The table below reads the same either way, because both answer the same
+question from a master's side: *is the position signal itself credible?*
+
+| Bit 6 (position credible?) | Bit 7 (position responding?) | Most likely cause |
 |---|---|---|
 | clear | clear | healthy, or nothing has moved yet to test it |
 | clear | **SET** | **the mechanism is stuck** — seized drum, tangled or snapped wire, slipped coupling. The wiper is electrically perfect and reads a plausible constant. |
-| **SET** | clear | **the switch path is suspect** — cut sensor cable, failed or misaligned proximity switch. Position is tracking fine. |
-| **SET** | **SET** | **the position path is dead** — wiper shorted to a rail, or its conductor broken. It neither follows the carriage nor agrees with the stops. |
+| **SET** | clear | **the position signal is out of range** but still moving — a partially shorted wiper, a wrong or drifted calibration. *(Under FR-E22 instead: a switch-path fault.)* |
+| **SET** | **SET** | **the position path is dead** — wiper shorted to a rail, or its conductor broken. It is neither credible nor responding. |
 
-That third row is the one a single bit could not give, and it is the one that
+That fourth row is the one a single bit could not give, and it is the one that
 tells an installer which end of the machine to walk to.
 
 **Bit 7 stays silent when nothing moves**, which is most of the time — it can
 only speak across a switch transition. Bit 6 covers the at-rest case. Neither
 subsumes the other, which is the argument for both.
+
+### The hysteresis problem, and why FR-E23 must be a trend
+
+The obvious formulation — *"the wiper must move across a switch transition"* —
+does not survive contact with the numbers.
+
+A window that nudges just across a switch threshold and back produces two
+transitions with almost identical raw codes. How little is "almost"? The
+3RG4023-3AB00's hysteresis is **0.04–1.76 mm**, and the rig runs ~0.98 mm per
+ADC count, so **a legitimate crossing can move the wiper by one or two counts** —
+inside the noise floor. A stuck wiper moves it by zero. One count is not a
+discriminator.
+
+Worse, the summing divider **cannot tell which stop is active** (§4.4: three
+states, and *one sensor active* does not say which). So "the carriage went from
+the closed stop to the open stop, therefore the wiper must have moved by roughly
+the span" is not available — deciding which stop needs the direction of travel,
+which comes from the wiper, which is the thing under suspicion. Circular.
+
+**The resolution is to make FR-E23 a trend, not an instantaneous fault.** That
+fits the framing: a health indication can demand repeated evidence before it
+speaks. One ambiguous sequence proves nothing; several in a row, with the wiper
+never moving, is not a nudge.
+
+It also removes the pressure to pick a clever threshold. **Y can be generous** —
+comfortably above noise, far below a real traverse — because the persistence
+count does the discriminating.
 
 ### Draft, if it is ever wanted
 
@@ -1136,25 +1246,70 @@ subsumes the other, which is the argument for both.
 > been established by a completed FR-E19 teach, the firmware shall compare the
 > two front-ends and report a disagreement in **status bit 6**: the opening
 > clamped at a calibrated endpoint while the corresponding end switch is
-> inactive, or the opening more than [X] % from either endpoint while an end
-> switch is active, in either case persisting for ≥ 2 × 40002. The bit shall be
-> reported and nothing more — it shall not suppress or alter 30001–30004,
-> following FR-E16's precedent for a cross-front-end fault. The comparison shall
-> be inactive when the calibration has not been taught.
+> inactive, or the opening more than **2 % of 40004** from either endpoint while
+> an end switch is active, in either case persisting for ≥ 2 × 40002. The bit
+> shall be reported and nothing more — it shall not suppress or alter
+> 30001–30004, following FR-E16's precedent for a cross-front-end fault. The
+> comparison shall be inactive when the calibration has not been taught.
 >
-> **FR-E23 (Should) — the position path follows the carriage.** On each debounced
-> end-switch transition (FR-E14/E15), the firmware shall compare the raw wiper
-> code against its value at the previous transition. A change of less than [Y]
-> counts across a transition indicates the position path is not following the
-> carriage — a shorted wiper, a broken conductor, or a mechanical failure of the
-> draw-wire — and shall be reported in **status bit 7**. Unlike FR-E22 this
-> needs no taught calibration, since it compares the wiper against **itself**
-> rather than against the endpoints.
+> *On its thresholds:* the first clause needs no band at all — FR-E04 clamps the
+> opening, so "at a calibrated endpoint" is exact equality with 0 or with 40004.
+> The 2 % applies only to the second clause, where a switch may legitimately
+> remain active slightly inside the endpoint. On a 2 m stroke that is 40 mm:
+> far wider than any hysteresis, far narrower than a real disagreement.
+>
+> **FR-E23 (Should) — the position path follows the carriage.** A *departure
+> sequence* is a debounced end-switch classification (FR-E14/E15) going
+> **at-a-stop → not-at-a-stop → at-a-stop**, with the middle state lasting at
+> least **2 × 40002**. Across each departure sequence the firmware shall record
+> the raw wiper code's total excursion — its maximum minus its minimum over the
+> whole sequence.
+>
+> When **3 consecutive** departure sequences each show an excursion below **16
+> counts** (≈1.5 % of the 10-bit range: comfortably above FR-E03's ≤3 LSB noise
+> and far below any real traverse), the position path is not following the
+> carriage and **status bit 7** shall be set. It shall clear on the first
+> sequence whose excursion exceeds the threshold.
+>
+> Unlike FR-E22 this needs **no taught calibration**: it compares the wiper
+> against **itself**, never against the endpoints.
+>
+> *Why a count of sequences rather than a single event:* the sensor's
+> 0.04–1.76 mm hysteresis is one or two ADC counts, so a legitimate
+> micro-crossing and a frozen wiper are indistinguishable in any single
+> sequence. Three in a row are not. This is a health indication and can afford
+> to be slow and certain.
 
 Note FR-E23's independence: it is the more valuable of the two and the cheaper,
 because it needs neither a teach nor a calibrated relationship between the front
 ends. Two raw codes and a switch edge are the whole input. If only one is ever
 built, build that one.
+
+### Integrator text, for `description.md`
+
+Draft wording, to sit alongside the existing status-bit description:
+
+> **Bits 6 and 7 — the health of the sensing, not of the window.** The device
+> watches its two front-ends — the draw-wire position and the end switches —
+> against each other, and reports when they stop agreeing. Neither bit changes
+> the reported opening: they tell you how far to trust it.
+>
+> | Bit 6 | Bit 7 | What to check |
+> |---|---|---|
+> | clear | clear | Nothing. Note bit 7 is only tested when the window moves through a stop. |
+> | clear | set | **The draw-wire mechanism.** The switches say the window moved; the position did not follow. Look for a tangled, snapped or slipping wire, a seized drum, or a loose coupling. The potentiometer itself is usually fine. |
+> | set | clear | **The end-switch wiring or mounting.** Position is tracking normally, but the switches disagree with it at the stops. Look for a cut sensor cable or a switch drifted out of alignment. |
+> | set | set | **The position signal itself.** It neither follows the window nor agrees with the stops — most often a wiper conductor shorted to a rail, or broken. |
+>
+> **Bit 6 requires a completed teach (40007).** On the factory-default
+> calibration the endpoints do not coincide with the switch positions, so the
+> comparison would be meaningless and the bit stays clear. Commission the device
+> with a teach to enable it.
+>
+> **These are diagnostics, not alarms.** They are deliberately slow — bit 7
+> needs several movements before it speaks, so a window rocking slightly at a
+> stop is never mistaken for a failure. Read a set bit as *schedule an
+> inspection*, not *stop the plant*.
 
 ### What is actually still open
 
@@ -1169,14 +1324,32 @@ before the requirements are written:
 2. ~~Bit allocation.~~ **DECIDED: bit 6 static, bit 7 dynamic.** FR-S33 pins
    bits 6–15 to 0, so both are free. This is still a §2.7 register-map change
    and integrators code against that bitfield.
-3. **Thresholds.** FR-E23's [Y] — how little raw movement across a switch
-   transition counts as "not following"? The rig gives real numbers to work
-   from: the switches fire at raw 56 and 834 against a 0–1022 traverse, so a
-   healthy transition moves the wiper by hundreds of counts. FR-E22's [X], the
-   band around a calibrated endpoint, is the harder one.
-4. **What a master should do with it.** The device reports and does not act
-   (§10). But a health indication nobody is told how to interpret is decoration:
-   `description.md` §10 or the integrator-facing text needs a sentence on it.
+3. ~~Thresholds.~~ **DRAFTED.** FR-E22: exact clamp equality plus 2 % of 40004.
+   FR-E23: 16 counts of excursion across 3 consecutive departure sequences.
+   FR-E23's turned out to be the awkward one, for a reason worth keeping — see
+   *the hysteresis problem* above. My first guess ("a healthy transition moves
+   the wiper by hundreds of counts") was wrong: it holds for a full traverse and
+   fails completely for a nudge across a switch threshold, where a legitimate
+   crossing moves one or two counts.
+4. ~~What a master should do with it.~~ **DRAFTED** as integrator text above.
+
+5. **Which mechanism gets bit 6** — reopened 2026-09-01 by the two-geometries
+   drawing. FR-E22 (static agreement) false-alarms in the real geometry, where
+   clamping is the resting state, and the latch that fixes it also blinds it to
+   a frozen wiper. **FR-E24 (plausible band)** works at rest, needs no switch
+   agreement and no latch, and catches the shorted wiper directly — but its
+   sensitivity depends on how much headroom the installation leaves between the
+   travel and the pot's electrical range. On the test rig, which spans raw
+   0–1022, it is inert.
+
+**What is genuinely left**: the choice in item 5, then adoption. FR-E23 is
+settled — wording, threshold, derivation, and it works in every geometry.
+Writing any of them into the TDS is a §2.7 register-map change (bits 6–15 are
+currently pinned to 0), which is the only fixed cost.
+
+**Provisional ordering on current evidence:** FR-E23 first (works everywhere),
+FR-E24 second (works wherever there is headroom), FR-E22 optional. The first two
+need no latch and make no assumption about switch geometry.
 
 Deliberately **not** written into the TDS until the shape is settled. A Should
 requirement added speculatively is a Should requirement nobody verifies.
