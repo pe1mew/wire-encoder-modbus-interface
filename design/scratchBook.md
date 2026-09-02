@@ -1142,6 +1142,14 @@ code outside the plausible band"* before it was narrowed on 2026-09-01.
 raw 0–1022, so there is no headroom and no band. Anything tested only on the rig
 will understate what a real installation can detect.
 
+**This is now an installation instruction, not just an observation.**
+`description.md` §8.1 tells the installer to size the draw-wire so the window
+never approaches either electrical extreme, and says why: without headroom, a
+shorted signal wire produces exactly the reading of a correctly closed window
+and no firmware can separate them. FR-E24 is only worth building because that
+instruction exists — and the instruction is worth giving even if FR-E24 never
+is, because it also makes the fault visible to anyone reading 30005 by hand.
+
 ### FR-E24 — the plausible band, and why it may beat FR-E22
 
 A third mechanism, better suited to the real geometry than the static

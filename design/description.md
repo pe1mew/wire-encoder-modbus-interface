@@ -301,6 +301,92 @@ rain-wetted.
 > rather than relying on the seal alone. This matters when specifying a
 > replacement or a second unit — it is not merely a nice-to-have.
 
+### 8.1 Positioning the end sensors and sizing the draw-wire
+
+Two mechanical choices decide how much this device can tell you. Both are made
+at installation, neither can be corrected in firmware, and one of them is the
+difference between detecting a broken draw-wire and never knowing.
+
+#### The end sensors mark the ends of the *opening range*, not the ends of travel
+
+The window has two different pairs of extremes, and they are not the same thing:
+
+- **The mechanical end positions** — where the leaf physically stops, against
+  its frame or its hard limits.
+- **The end sensors** — where this device is told the opening range begins and
+  ends.
+
+Mount the sensors so they mark **the opening range you want reported**. A teach
+(§6) captures exactly those two points as 0 mm and full travel. The leaf may
+travel a little beyond them in each direction; that is expected, and the
+reported opening simply holds at 0 or at full travel while it does.
+
+**Each sensor must remain active from the moment the leaf reaches it, all the
+way to where the leaf comes to rest.** This is the requirement most easily got
+wrong, because a proximity sensor with a short sensing range will trigger as the
+leaf passes and release again as it continues to its mechanical stop. The
+window then sits fully closed while the device reports *"not at an end
+position"* — the one moment that indication matters most.
+
+The remedy is mechanical, not electrical: use a target long enough, or a sensor
+with enough range, that the sensor stays made across the whole overtravel. If
+the leaf can coast 15 mm past the sensor, the sensing zone must be at least
+that long.
+
+> **Check it after installation.** Drive the window fully closed, leave it, and
+> read status bit 3. It must be **set**, and stay set, with nothing touching the
+> window. If it clears, the sensor is too short or mounted too far in.
+
+#### The draw-wire must have range to spare at both ends
+
+**Do not size the draw-wire so that its ends coincide with the window's end
+positions.** The potentiometer's electrical range must be comfortably *wider*
+than the travel the window actually uses, so that:
+
+```
+   0 V ────────────────────────────────────────────────────── 3.3 V
+        |<-- unused -->|<---- window travel ---->|<-- unused -->|
+                       ^                         ^
+                  lower sensor              upper sensor
+```
+
+The window should never drive the wiper close to either electrical end.
+
+**This is what makes a faulty wiper detectable.** A draw-wire whose signal
+conductor is broken, or shorted to 0 V or to the supply, produces a reading at
+or very near one electrical extreme. If the installation leaves unused range at
+both ends, that reading is somewhere the window **cannot legitimately be**, and
+the fault can be told apart from a genuine position. If instead the draw-wire is
+sized so that fully closed sits at 0 V, a shorted signal wire produces exactly
+the reading of a correctly closed window, and **no amount of firmware can
+distinguish them** — the device will confidently report the window shut while
+the wire lies broken.
+
+Practical guidance:
+
+- Choose a draw-wire whose stroke is **longer than the window's travel**, and
+  mount it so the travel sits near the middle of that stroke.
+- Aim to leave at least **10 % of the electrical range unused at each end**.
+  More is better; there is no penalty for headroom.
+- Resolution is not the constraint you might expect. Even using only half the
+  electrical range, a 2 m stroke resolves to about 2 mm — well inside the 1 %
+  the specification asks for. **Trade resolution for headroom without
+  hesitation.**
+
+> **Check it after installation.** With the window fully closed, then fully
+> open, read register 30005 (the raw code, 0–1023). Neither reading should be
+> near 0 or near 1023. If either is, the draw-wire is mounted too close to the
+> end of its stroke and a broken conductor will masquerade as a valid position.
+
+#### Why the two go together
+
+The sensors tell the device **where the window is**; the draw-wire headroom
+tells it **whether to believe its own position signal**. Get the sensors right
+and the closed indication is trustworthy. Get the headroom right and a broken or
+shorted draw-wire becomes visible instead of silent. Get both right and the two
+measurements can be compared against each other, which is what makes it possible
+to say the *mechanism* has failed while the electronics are perfectly healthy.
+
 ## 9. On the bus
 
 Modbus RTU over RS-485, 9600 baud, 8N1. The device is a pure slave: it
