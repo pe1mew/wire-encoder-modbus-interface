@@ -1112,6 +1112,24 @@ cannot tell the installer which end to look at.
 - Both front-ends failing consistently. This is corroboration, not redundancy.
 - Anything at all before a teach.
 
+### What the two bits say together
+
+Separating them earns its place in the combination, not just in each bit alone:
+
+| Bit 6 (static) | Bit 7 (dynamic) | Most likely cause |
+|---|---|---|
+| clear | clear | healthy, or nothing has moved yet to test it |
+| clear | **SET** | **the mechanism is stuck** — seized drum, tangled or snapped wire, slipped coupling. The wiper is electrically perfect and reads a plausible constant. |
+| **SET** | clear | **the switch path is suspect** — cut sensor cable, failed or misaligned proximity switch. Position is tracking fine. |
+| **SET** | **SET** | **the position path is dead** — wiper shorted to a rail, or its conductor broken. It neither follows the carriage nor agrees with the stops. |
+
+That third row is the one a single bit could not give, and it is the one that
+tells an installer which end of the machine to walk to.
+
+**Bit 7 stays silent when nothing moves**, which is most of the time — it can
+only speak across a switch transition. Bit 6 covers the at-rest case. Neither
+subsumes the other, which is the argument for both.
+
 ### Draft, if it is ever wanted
 
 > **FR-E22 (Should) — static consistency.** When the calibration endpoints have
@@ -1129,7 +1147,7 @@ cannot tell the installer which end to look at.
 > code against its value at the previous transition. A change of less than [Y]
 > counts across a transition indicates the position path is not following the
 > carriage — a shorted wiper, a broken conductor, or a mechanical failure of the
-> draw-wire — and shall be reported in **status bit [7]**. Unlike FR-E22 this
+> draw-wire — and shall be reported in **status bit 7**. Unlike FR-E22 this
 > needs no taught calibration, since it compares the wiper against **itself**
 > rather than against the endpoints.
 
@@ -1145,20 +1163,17 @@ device is uniquely placed to provide, and without it a stuck or broken wire has
 no indication whatsoever. What remains is **how**, and these need answering
 before the requirements are written:
 
-1. **One concept or two?** FR-E22 (static) and FR-E23 (dynamic) are drafted as
-   separate requirements with separate status bits. They could equally be one
-   "sensing inconsistent" indication with the distinction left to a diagnostic
-   register. Two bits let a master tell *at rest* disagreement from *did not
-   respond to movement*, which point at different faults; one bit is simpler and
-   cheaper in the register map.
-2. **Thresholds.** FR-E23's [Y] — how little raw movement across a switch
+1. ~~One concept or two?~~ **DECIDED 2026-09-01: two bits**, so a master can
+   tell them apart. See the combinations below — they point at different faults
+   and, taken together, at a third.
+2. ~~Bit allocation.~~ **DECIDED: bit 6 static, bit 7 dynamic.** FR-S33 pins
+   bits 6–15 to 0, so both are free. This is still a §2.7 register-map change
+   and integrators code against that bitfield.
+3. **Thresholds.** FR-E23's [Y] — how little raw movement across a switch
    transition counts as "not following"? The rig gives real numbers to work
    from: the switches fire at raw 56 and 834 against a 0–1022 traverse, so a
    healthy transition moves the wiper by hundreds of counts. FR-E22's [X], the
    band around a calibrated endpoint, is the harder one.
-3. **Bit allocation.** FR-S33 pins bits 6–15 to 0, so bits 6 and 7 are free —
-   but changing a published bitfield is a register-map change, and §2.7 is what
-   integrators code against.
 4. **What a master should do with it.** The device reports and does not act
    (§10). But a health indication nobody is told how to interpret is decoration:
    `description.md` §10 or the integrator-facing text needs a sentence on it.
