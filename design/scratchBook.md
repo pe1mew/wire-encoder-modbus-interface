@@ -1039,6 +1039,48 @@ debounce — the opening updates once per window (up to 60 s) while switches
 update at 20 Hz, so the two legitimately disagree during travel for up to one
 window. **Status bit 6 is free**: FR-S33 allocates bits 0–5 and pins 6–15 to 0.
 
+### Two forms, and the second is the stronger one
+
+The comparison above is **static** — it holds at rest, and it says *"these two
+disagree"*. It does **not** say which front-end is at fault. Opening clamped
+closed with the switch inactive fits a shorted wiper, a cut switch cable, and a
+failed or misaligned switch equally well.
+
+Attribution needs one more fact: **evidence that the carriage moved**. The
+switches supply it.
+
+> **A switch transition proves the carriage moved. If the reported opening does
+> not change across it, the wiper is not following the carriage.**
+
+| Observation | Attribution |
+|---|---|
+| Switch transitions, opening changes normally | both healthy |
+| Switch transitions, **opening frozen** | **the position path is at fault** |
+| Opening sweeps the full range, switch never fires at the endpoint | **the switch path is at fault** |
+
+**This is what makes the feature worth more than the shorted-wiper case
+suggests.** A short is only one way to freeze the reading. So is a seized drum,
+a snapped draw-wire, a slipped grub screw on the pot shaft, or a coupling that
+has let go. In every one of those the potentiometer is **electrically perfect**:
+the FR-E07 pull test passes, the reading is stable and plausible, FR-E03's
+≤3 LSB criterion passes — and the number is simply wrong, because the wire is
+not turning the shaft.
+
+For a draw-wire mechanism on a moving window, **mechanical failure is
+considerably more likely than a cable short.** The dynamic check addresses the
+more probable fault, and nothing else in this design could.
+
+The two forms are complementary rather than alternatives:
+
+- **Static** works at rest and flags *something is inconsistent now*. It is the
+  only one available on a window that is not moving, which is most of the time.
+- **Dynamic** needs a switch transition, so it only speaks when the window
+  travels through a stop — but when it speaks it **names the faulty path**, and
+  it covers a failure class the static form and every electrical test miss.
+
+A device implementing only the static form still reports the fault; it just
+cannot tell the installer which end to look at.
+
 ### What it still would not catch
 
 - A short occurring while the window is genuinely at that stop — the two agree,
@@ -1049,15 +1091,29 @@ window. **Status bit 6 is free**: FR-S33 allocates bits 0–5 and pins 6–15 to
 
 ### Draft, if it is ever wanted
 
-> **FR-E22 (Should).** When the calibration endpoints have been established by a
-> completed FR-E19 teach, the firmware shall compare the two front-ends and
-> report a disagreement in **status bit 6**: the opening clamped at a calibrated
-> endpoint while the corresponding end switch is inactive, or the opening more
-> than [X] % from either endpoint while an end switch is active, in either case
-> persisting for ≥ 2 × 40002. The bit shall be reported and nothing more — it
-> shall not suppress or alter 30001–30004, following FR-E16's precedent for a
-> cross-front-end fault. The comparison shall be inactive when the calibration
-> has not been taught.
+> **FR-E22 (Should) — static consistency.** When the calibration endpoints have
+> been established by a completed FR-E19 teach, the firmware shall compare the
+> two front-ends and report a disagreement in **status bit 6**: the opening
+> clamped at a calibrated endpoint while the corresponding end switch is
+> inactive, or the opening more than [X] % from either endpoint while an end
+> switch is active, in either case persisting for ≥ 2 × 40002. The bit shall be
+> reported and nothing more — it shall not suppress or alter 30001–30004,
+> following FR-E16's precedent for a cross-front-end fault. The comparison shall
+> be inactive when the calibration has not been taught.
+>
+> **FR-E23 (Should) — the position path follows the carriage.** On each debounced
+> end-switch transition (FR-E14/E15), the firmware shall compare the raw wiper
+> code against its value at the previous transition. A change of less than [Y]
+> counts across a transition indicates the position path is not following the
+> carriage — a shorted wiper, a broken conductor, or a mechanical failure of the
+> draw-wire — and shall be reported in **status bit [7]**. Unlike FR-E22 this
+> needs no taught calibration, since it compares the wiper against **itself**
+> rather than against the endpoints.
+
+Note FR-E23's independence: it is the more valuable of the two and the cheaper,
+because it needs neither a teach nor a calibrated relationship between the front
+ends. Two raw codes and a switch edge are the whole input. If only one is ever
+built, build that one.
 
 ### What decides it
 
@@ -1066,6 +1122,12 @@ heating, or clears an alarm, on that basis, then a shorted wiper reporting
 "fully closed" is a fail-unsafe path and this earns its place. If the value is
 advisory, §4.4.6's documented limitation is an honest enough answer and this
 stays a note.
+
+**A second question, which may matter more:** *is a stuck draw-wire an expected
+failure over the product's life?* A spring-loaded drum on a moving window is a
+wearing part. If it is, FR-E23 is not a nicety — it is the only detection this
+design has for the mechanism silently ceasing to measure while reporting a
+perfectly plausible number.
 
 Deliberately **not** written into the TDS until that question is answered. A
 Should requirement added speculatively is a Should requirement nobody verifies.
