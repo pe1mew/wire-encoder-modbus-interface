@@ -1,6 +1,7 @@
 #include "persist.h"
 #include "regs.h"
 #include "avg.h"
+#include "health.h"
 #include "sensors.h" /* BUILD_TYPE + WE_RAW_MAX_DEFAULT */
 #include "scale.h"
 #include "version.h"
@@ -119,6 +120,8 @@ static uint16_t r_at_open;       /* 30014 raw code seen at the open stop   */
 #define STATUS_END_REACHED             0x0008 /* bit 3 (FR-E14)     */
 #define STATUS_SWITCH_FAULT            0x0010 /* bit 4 (FR-E16)     */
 #define STATUS_TEACH_ACTIVE            0x0020 /* bit 5 (FR-E19)     */
+#define STATUS_RAW_IMPLAUSIBLE         0x0040 /* bit 6 (FR-E24)     */
+#define STATUS_POSITION_STUCK          0x0080 /* bit 7 (FR-E23)     */
 
 #define OPEN_FAULT_SENTINEL 65535u /* §2.7 — reported by 30001..30004 */
 #define FAULT_HOLD_S        2u     /* FR-E07: hold the last value this long */
@@ -299,6 +302,7 @@ void regs_init(uint8_t mb_address)
 	persisted.raw_open = h_raw_open;
 
 	r_status = STATUS_FIRST_WINDOW_INCOMPLETE | STATUS_AVG_NOT_FILLED;
+	health_init();
 	avg_config(h_window, h_avg);   /* after the holdings load, so the span is
 	                                * the PERSISTED one from the first window */
 	shadow_window = h_window;
@@ -485,6 +489,13 @@ void regs_publish_switches(uint16_t raw)
 		r_status |= STATUS_SWITCH_FAULT;
 	else
 		r_status &= (uint16_t)~STATUS_SWITCH_FAULT;
+
+	/* FR-E23: a DEBOUNCED transition, which is what a departure sequence is
+	 * defined over. Fed here rather than from the sampler so switch chatter
+	 * cannot manufacture sequences. */
+	health_note_switch(sw_published == SW_ONE_ACTIVE ? HEALTH_SW_AT_STOP
+	                                                 : HEALTH_SW_CLEAR,
+	                   r_raw, h_window);
 }
 
 const mb_config_t *regs_cfg(void)
@@ -597,6 +608,19 @@ void regs_publish_opening(uint16_t raw, uint16_t open_0_1mm, bool valid)
 	r_open_max = avg_max();    /* 30004, FR-E08 */
 	if (avg_filled())
 		r_status &= (uint16_t)~STATUS_AVG_NOT_FILLED;   /* FR-S23 bit 1 */
+
+	/* FR-E24 / FR-E23. Only valid windows reach here, which matters: a faulted
+	 * sample says nothing about plausibility and must never latch bit 6. */
+	health_note_window(raw, h_raw_closed, h_raw_open, h_window);
+	health_note_raw(raw);
+	if (health_raw_implausible())
+		r_status |= STATUS_RAW_IMPLAUSIBLE;
+	else
+		r_status &= (uint16_t)~STATUS_RAW_IMPLAUSIBLE;
+	if (health_position_stuck())
+		r_status |= STATUS_POSITION_STUCK;
+	else
+		r_status &= (uint16_t)~STATUS_POSITION_STUCK;
 }
 
 #ifdef TEST_HOOKS
