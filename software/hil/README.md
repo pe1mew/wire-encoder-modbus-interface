@@ -61,6 +61,12 @@ flash (`pio`) → stimulate (ADALM2000 / libm2k) → observe (Saleae Logic 2 MCP
 | `tp_b32.py` | FR-MB04 DE timing, measured from the bus drive envelope rather than a probe on PC2 | **PASS** 2026-09-01 |
 | `tp_b33_b34.py` | FR-MB28 quantity limits and FR-MB24 malformed-frame handling | **PASS** 2026-09-01 |
 | `tp_b35.py` | FR-S16/FR-MB23 soak and the FR-MB20/21 latency histogram | **PASS** 10 000 cycles 2026-09-01 |
+| `movement.py` | Window-emulator movement rows — FR-E10 tracking, FR-E17 update age while moving, FR-E18/E19 direction and travel | **4/4 PASS** 2026-09-01 |
+| `teach.py` | FR-E18/FR-E19 teach handshake end to end, both limits, including the refusal paths | **7/7 PASS** 2026-09-01 |
+| `fr_e01.py` | FR-E01 opening in mm against the rig scale at 1000 mm | **PASS** 2026-09-01 |
+| `em_m05.py` | Emulator EM-M05 — end-stop sensor still active at the mechanical limit, which **EM-M03 requires**. See the gotcha log: this was wrongly called a rig defect first | **PASS** 2026-09-01 |
+| `tp_c01.py` | **FR-E23** position-not-following, status bit 7. Operator detaches the draw-wire and traverses; three departure sequences set the bit, one good one clears it | **PASS** 2026-09-01 |
+| `tp_c02.py` | **FR-E24** plausible band, status bit 6. Moves the *band* rather than the carriage, so the calibration is the only variable. Also proves the factory default is inert | **5/5 PASS** 2026-09-01 |
 | `power_cycle.py` | TP-B02/B04/B19 helper: arm → operator cycles power → check | **PASS** 2026-09-01 |
 
 **First job when a board exists:** run `smoke_test.py`, then

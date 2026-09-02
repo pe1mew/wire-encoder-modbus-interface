@@ -302,6 +302,41 @@ the only check that catches a silently-wrong net.
 
 ---
 
+### A rig "defect" that was the mechanism working correctly (2026-09-01)
+
+**Problem**: EM-M05 showed the end-stop sensor still active with the carriage at
+its mechanical limit. I called it a rig defect and recommended **moving the
+sensor** — a change to hardware that was working. The user pushed back on
+domain grounds: *"when the window stops at its mechanical limit you do not want
+to have the sensor active?"* Re-measured against the requirement, EM-M05 PASSES;
+EM-M03 **requires** the hard limit to lie beyond the actuation point, so a
+sensor that goes inactive at the limit would be the defect.
+
+**Root cause**: I read a single ambiguous observation as a fault without first
+reading the requirement that governs the geometry. The observation was
+compatible with both "sensor misplaced" and "sensor correctly placed"; nothing
+in the data chose between them, and I chose the one that made my reading right.
+
+**Fix**: Retracted, re-derived from EM-M03, re-measured — PASS. The escalation
+that matters is the *remedy*: every earlier instance of this pattern proposed
+changing a **test**, which is cheap and reversible. This one proposed changing
+**working hardware**, on the strength of one sample.
+
+### Telling the user a blocked requirement was closable, three times (2026-09-01)
+
+**Problem**: I repeatedly described FR-E03 as closable from the rig's own
+readout. It is not: FR-E03 constrains the **electronics** driven by a precision
+divider, and the draw-wire mechanism's contribution is a separate item. Saying
+so three times risked the user buying the wrong instrument.
+
+**Root cause**: I inferred the requirement's scope from the section it sits in
+rather than reading its text. Its ≤3 LSB stability half genuinely does pass on
+the bench, which made the whole requirement feel nearly closed.
+
+**Fix**: FR-E03 is listed as needing a precision resistance box and **five
+ratios**, and the two halves are recorded separately so the passing half cannot
+be mistaken for the whole.
+
 ## Promoted patterns
 
 Recurrences that have earned a standing rule.
@@ -309,7 +344,10 @@ Recurrences that have earned a standing rule.
 ### A test that blames the device must first rule out the instrument
 
 Promoted after this happened **seven times in one bench session** (2026-09-01),
-each time reporting a defect in the DUT that did not exist:
+each time reporting a defect in the DUT that did not exist. It then recurred
+through the rest of that day — roughly ten instances in total against **two**
+genuine firmware bugs (the FR-E12 sample time and the blocking regression). The
+base rate is the finding: when this bench says FAIL, the rig is the way to bet.
 
 | Row | Reported | Actually |
 |---|---|---|
@@ -451,3 +489,11 @@ of investigated. Two concrete tells worth keeping:
 Corollary: a diagnostic that returns a *clean* result you did not expect
 (20/20 releases when you are hunting an intermittent fault) is evidence, not
 noise. Disbelieving it cost most of the hour.
+- **The remedy must be as reversible as the evidence is strong.** One ambiguous
+  sample can justify re-reading a requirement or re-running a measurement. It
+  cannot justify modifying working hardware. If the proposed fix is less
+  reversible than the observation is certain, the fix is wrong — see the EM-M05
+  entry, where the observation was correct and the conclusion inverted.
+- **Before calling a physical arrangement wrong, find the requirement that
+  governs it.** EM-M05 looked like a misplaced sensor until EM-M03 turned out to
+  mandate exactly that placement.

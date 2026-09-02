@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | Test plan for the wire-encoder Modbus interface |
-| Version | 0.2 (2026-09-01 — Modbus rows re-traced against the TDS after the first Group B run; 8 rows added, 5 citations corrected) |
+| Version | 0.3 (2026-09-01 — Group C gained TP-C01/TP-C02 for FR-E23/FR-E24; every requirement family is now gate-checked by `test_traceability.py`, not just FR-MB) |
 | Traces to | [`TDS.md`](TDS.md) v0.7 — every row below cites the requirement whose verification clause it executes |
 | Records to | [`../software/hil/testReport.md`](../software/hil/testReport.md) |
 | Supersedes | [`integrationPlan.md`](integrationPlan.md) §7, which was a placeholder awaiting hardware |
