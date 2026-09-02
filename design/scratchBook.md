@@ -977,6 +977,99 @@ a damp night would fail FR-E03 silently — plausible readings, no fault flag,
 nothing visibly wrong. That is the worst failure mode this device has, and a
 few euros of coating removes it.
 
+## Q4 — can the two front-ends witness each other's failures? — **OPEN, costed**
+
+Raised 2026-09-01, after FR-E07 was narrowed to open circuits only. Not
+implemented; recorded because establishing it took real work and the reasoning
+should not have to be rediscovered.
+
+### The two blind spots it would close
+
+They are documented separately and neither has any other mitigation:
+
+- **FR-E07's limit.** A wiper shorted to a rail is undetectable. R11 sits
+  between the field wiring and PA2, so a short to either rail presents 10 kΩ to
+  that rail — electrically identical to the wiper resting at the corresponding
+  end stop. **A wiper shorted to 0 V reports the window as fully closed**, which
+  is the fail-unsafe direction.
+- **§4.4.6's limit.** *"There is no fault band at all. Inactive, cable open and
+  signal shorted to 0 V all read the same ~0 counts."* A cut end-switch cable
+  produces a **missed stop** — the window reaches its limit and nothing says so.
+
+They are complementary, and the two front-ends are genuinely independent:
+separate sensors, separate cables, separate ADC channels, different physics. So
+**each can witness the other's failure**.
+
+### The comparison
+
+| Opening | End switch | Verdict |
+|---|---|---|
+| At a clamped endpoint | Active | consistent |
+| At a clamped endpoint | **Inactive** | **disagree** — shorted wiper, or cut switch cable |
+| Mid-travel | **Active** | **disagree** — stuck switch, or wiper reading wrong |
+| Mid-travel | Inactive | consistent |
+
+### The precondition, which is the whole difficulty
+
+**It only works after a completed FR-E19 teach.**
+
+FR-E04 clamps the opening to the calibrated span, so "position at an endpoint"
+means the wiper is at or beyond a calibration point. After a teach the
+calibration points *are* the switch actuation points — the 2026-09-01 run gave
+40005 = 56 and 40006 = 834, exactly where the switches fire. With EM-M05
+measured (the switch holds from actuation through to the mechanical limit), that
+gives a clean equivalence:
+
+> **opening clamped ⟺ switch active**
+
+and any mismatch is a fault.
+
+With the **default** calibration (0 / 1023) the switches fire at openings 547 and
+8150 — nowhere near either clamp — and the check would report continuously. So
+it must be armed only when the calibration was *taught*, not merely *written*.
+That is new state the register map does not carry today, and it means the
+protection is **absent until commissioning performs a teach**. A device shipped
+on defaults has none of it.
+
+### Cost
+
+Small. `regs.c` already holds both values; it is a comparison in
+`regs_publish_opening`, a persisted "calibration was taught" flag, and a
+debounce — the opening updates once per window (up to 60 s) while switches
+update at 20 Hz, so the two legitimately disagree during travel for up to one
+window. **Status bit 6 is free**: FR-S33 allocates bits 0–5 and pins 6–15 to 0.
+
+### What it still would not catch
+
+- A short occurring while the window is genuinely at that stop — the two agree,
+  because the reported position happens to be right. It is caught as soon as the
+  window moves off, which is when the wrong answer starts to matter.
+- Both front-ends failing consistently. This is corroboration, not redundancy.
+- Anything at all before a teach.
+
+### Draft, if it is ever wanted
+
+> **FR-E22 (Should).** When the calibration endpoints have been established by a
+> completed FR-E19 teach, the firmware shall compare the two front-ends and
+> report a disagreement in **status bit 6**: the opening clamped at a calibrated
+> endpoint while the corresponding end switch is inactive, or the opening more
+> than [X] % from either endpoint while an end switch is active, in either case
+> persisting for ≥ 2 × 40002. The bit shall be reported and nothing more — it
+> shall not suppress or alter 30001–30004, following FR-E16's precedent for a
+> cross-front-end fault. The comparison shall be inactive when the calibration
+> has not been taught.
+
+### What decides it
+
+**Does anything act on "the window is closed"?** If a controller shuts down
+heating, or clears an alarm, on that basis, then a shorted wiper reporting
+"fully closed" is a fail-unsafe path and this earns its place. If the value is
+advisory, §4.4.6's documented limitation is an honest enough answer and this
+stays a note.
+
+Deliberately **not** written into the TDS until that question is answered. A
+Should requirement added speculatively is a Should requirement nobody verifies.
+
 # Design directives
 
 Carried over, and they earned their place:
