@@ -18,7 +18,9 @@ Covered here:
 
 Needs the window to move, so NOT covered:
     FR-E01  absolute after reset with no homing move (needs a power cycle)
-    FR-E03  end-to-end accuracy against a reference (needs the window emulator)
+    FR-E03  electronics accuracy — needs a PRECISION DIVIDER in place of the
+            pot at 5 ratios, not the emulator. The mechanism's own linearity
+            is explicitly a separate §6 item, not FR-E03.
     FR-E10  signed movement rate (needs actual movement)
     FR-E17  maximum age of a read value (needs a changing value to be stale)
     FR-E18/E19  teach handshake (needs both stops actually reached)

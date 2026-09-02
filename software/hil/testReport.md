@@ -492,6 +492,70 @@ none of them were the DUT:
    corrupt on that basis; the result was discarded, not counted against the
    device.
 
+### End-to-end travel: 999.0 mm measured against a 1000 mm rig scale
+
+The rig's own scale (EM-M06) reads **1000 mm** across the traverse; the device
+reported **999.0 mm**. Agreement to **0.1 %**.
+
+The 1.0 mm is not mechanism error — it is **one ADC count**. With travel = 1000.0
+mm mapped across raw 0–1023, one count is 0.977 mm, and the carriage reached raw
+**1022** at the open limit rather than 1023. The whole discrepancy is that single
+count of calibration span.
+
+**This does NOT close FR-E03, and an earlier note in this report said it would.**
+That was a mis-reading of the requirement's scope, corrected here:
+
+> "Reported opening accuracy — **with the potentiometer replaced by a precision
+> divider of ≤0.1 % ratio accuracy** — shall be within ±0.1 % of the configured
+> full travel (40004), covering quantization and INL. **End-to-end accuracy
+> including the draw-wire mechanism's linearity and the potentiometer's own
+> conformity is a separate hardware/calibration item (§6).**"
+
+FR-E03 is scoped to the **electronics** — quantisation and INL — measured with a
+precision divider in place of the pot, at five ratios spanning the range, plus
+100 reads over 60 s at a fixed ratio spanning ≤3 LSB. The draw-wire mechanism is
+explicitly excluded. It needs the precision resistance box from the plan's
+equipment list, not the emulator and not the rig's scale.
+
+**What the 999.0 mm figure is genuinely evidence for** is the §6
+hardware/calibration item — the mechanism and the pot's conformity — and on that
+it is a strong result: 0.1 % end to end, with the residual accounted for by a
+single ADC count rather than unexplained.
+
+**Related, already measured:** the ≤3 LSB stability half of FR-E03's
+verification clause passes — 30005 spanned **0 LSB over 60 reads** (Group C) and
+**2 counts over 32 reads** after the FR-E12 change. Only the five-ratio divider
+sweep is outstanding.
+
+### FR-E01 — the opening is absolute across a reset
+
+**PASS.** Power-cycled with the carriage parked at mid-travel and untouched:
+
+| | Before | First window after reset |
+|---|---|---|
+| 30001 | 2619 | **2609** |
+| 30005 | 268 | **267** |
+| uptime | 38 786 s | 1 s |
+
+The 1.0 mm difference is **one ADC count** — the quantisation floor, not an
+error. The first published window arrived **0.98 s** after the device answered
+again: one measurement window, so the value was right at the first opportunity.
+
+That is what "absolute" buys, and it is the property that separates a
+potentiometric draw-wire from an incremental encoder — the latter reads zero or
+nonsense until it finds a reference.
+
+**The test refuses to run near a zero opening, and that guard matters.** FR-S23
+initialises 30001–30004 to 0 and holds them there until the first window
+completes. The carriage had been parked at the closed limit minutes earlier;
+had the row been run there, "correct immediately after reset" and "still showing
+the uninitialised value" would have been *the same number* — and it would have
+passed against a device that measured nothing at all.
+
+**It also catches the FIRST published window rather than a settled value**,
+polling until status bit 0 clears. A device needing a homing move would produce
+a wrong first value and then converge, which any later poll would hide.
+
 ### FR-E18 / FR-E19 — the teach handshake, 7 pass 0 fail
 
 Newly runnable once both stops became reachable. Every clause of FR-E19, in
@@ -523,31 +587,58 @@ numbers after arming and observing no commit is what turns that into evidence.
 minimum span. The rig traverses the full ADC range and cannot present two stops
 that close together.
 
-### A rig finding: the closed-end switch does not hold through the limit
+### A rig finding I withdrew — and then disproved by measurement
 
-The taught endpoints are **raw 56 and 834**. The wiper traverses **0 to 1022**.
-So the carriage runs roughly 250 counts past each switch's actuation point —
-and at the closed end it passes out the far side of the sensing zone:
+**RETRACTED 2026-09-01.** This section previously claimed the closed-end sensor
+violated EM-M05 by releasing at the mechanical limit, and recommended moving
+both sensors. Both claims were wrong.
 
-| Source | Evidence |
+**Actuating before the mechanical limit is the design.** EM-M03 requires *"a
+hard mechanical limit beyond each switch's actuation point, so that over-travel
+is bounded even with every switch defeated."* The switch firing at raw 56 with
+the hard stop at raw 0 is that arrangement working. In service the drive is
+*inhibited* at the switch, so **the switch point is the operational end of
+travel** and the mechanical limit is a backstop nobody reaches. The carriage
+only ran past it here because manual movement bypasses the inhibit.
+
+**So the taught calibration is right, not narrow.** Teaching 40005 = 56 and
+40006 = 834 captures the endpoints that matter. The earlier concern — that it
+should span the full 0–1022 mechanical travel — had the product backwards.
+
+**And the EM-M05 evidence does not say what was claimed.** From the movement
+log:
+
+    t = 0.22 s   30001 = 0, raw = 0, status 0x0008   AT STOP
+    t = 19.95 s  30001 = 0, raw = 0, status 0x0000   still
+
+Bit 3 held for **20 seconds** at raw 0 — the sensor *was* continuously active at
+the limit, which argues **for** EM-M05, not against it. It cleared at 19.95 s,
+about 1.3 s before the position visibly changed at 21.22 s. The simple reading
+is the operator starting to move away, with 30001 not yet updated within its
+window.
+
+**What went wrong in the analysis**: "bit 3 cleared while the position had not
+changed yet" was read as "the switch released on its own", when a switch
+releasing as you move off it — one window ahead of the position register —
+explains it without any defect. A rig fault was constructed from a one-sample
+ambiguity, and a hardware change was recommended on the strength of it.
+
+**EM-M05 has since been tested properly — and PASSES.** Parked at the closed
+limit, hands off, 122 samples over 30 s ([`em_m05.py`](em_m05.py)):
+
+| | |
 |---|---|
-| Teach log | `AT STOP` at raw ≈56 (t = 26.5 s), then **"left the stop" at raw 0** (t = 30.2 s) as the carriage continued to the mechanical limit |
-| Movement log | At raw 0, **stationary**, status went `0x0008` → `0x0000` across 20 s — the switch released with nothing moving |
+| 30005 span | **0..0** — zero counts of wander, so the carriage was demonstrably stationary |
+| Bit 3 dropouts | **0** |
 
-This is **EM-M05**: *"each switch shall stay continuously active from its
-actuation point to the mechanical limit."* It is a property of the rig, not the
-firmware — but it matters to the product, because **bit 3 reads "not at a stop"
-with the window fully closed**, which is exactly when a master most needs it.
+The stationary requirement is what makes it a test rather than an anecdote:
+with the raw code provably fixed, "the switch held" and "the operator kept it on
+the switch" stop being the same observation. That is precisely the ambiguity the
+withdrawn finding was built on.
 
-Two consequences worth acting on:
-
-- **FR-E14 was verified against this rig.** Its pass stands — bit 3 did set at a
-  stop and clear on leaving one — but "at a stop" was observed at the *switch*,
-  not at the mechanical limit, and the two are ~25 mm apart here.
-- **The taught calibration is narrower than the travel.** Committing 56/834
-  would make the mechanical extremes fall outside the calibrated span and clamp
-  (as Group C's clamp cases showed). Moving each sensor so it stays active from
-  actuation to limit fixes both problems at once.
+**The switch stays continuously active at the mechanical limit.** The rig meets
+EM-M05, the geometry meets EM-M03, and the taught endpoints are correct. There
+was never a defect here.
 
 ### The window emulator arrived — four movement rows closed
 
@@ -586,9 +677,8 @@ This is the same family as the FR-E16 isolation error earlier: **the wrong
 statistic produces a number, and the number is wrong.** Three of these now, all
 in tests I wrote, all reporting a defect that was not there.
 
-**FR-E03 is measurable but not judged.** Observed travel **999.0 mm**. Closing
-it needs that compared against the rig's own position readout (EM-M06) — the one
-requirement here with no reference available to the suite.
+**End-to-end travel agrees with the rig to 0.1 %** — but that is NOT FR-E03;
+see the correction below.
 
 **Still outstanding after this:** FR-E01 (needs a power cycle at a known
 opening), FR-E18/E19 (teach handshake — both stops are now reachable, so this is
@@ -636,7 +726,7 @@ one mounted forwards. Same raw code, inverted opening, exact match.
 | Requirement | Needs |
 |---|---|
 | FR-E01 absolute after reset | a power cycle with the window held at a known opening |
-| FR-E03 end-to-end accuracy | the window emulator (`design/windowEmulator.md`, specified but not built) |
+| FR-E03 electronics accuracy | a **precision divider** substituted for the pot, at 5 ratios — not the emulator |
 | FR-E10 signed movement rate | the window actually moving |
 | FR-E17 maximum age of a read | a changing value, to have staleness to bound |
 | FR-E18/E19 teach handshake | both stops physically reached |

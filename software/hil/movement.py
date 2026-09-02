@@ -17,8 +17,11 @@ everything from the registers rather than from when a person pressed something.
 
 Reported but NOT judged here, because they need a reference this script has no
 access to:
-    FR-E03  end-to-end accuracy needs the rig's independent position readout
-            (EM-M06). The travel in 0.1 mm is printed for comparison by hand.
+    FR-E03  is NOT this. It is scoped to the electronics, with a precision
+            divider replacing the pot at 5 ratios; the draw-wire mechanism is
+            explicitly a separate §6 item. The travel printed below is
+            evidence for THAT item — compare it against the rig's own scale
+            (EM-M06).
 
 Run:  .venv-m2k/Scripts/python software/hil/movement.py --unit 40 --seconds 120
 """
