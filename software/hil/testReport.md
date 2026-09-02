@@ -1142,19 +1142,28 @@ requirement reachable with the present equipment has been exercised.
 | TP-B20 | **ACCEPTED at 13/20 cycles** by decision, to bound flash wear on a prototype |
 | TP-B24 | **PASS** (partial scope) — one cycle on a quiet bus, where the TDS asks for 20 with another master/slave pair active |
 
-**Three decisions waiting**, all raised with evidence and deliberately not taken
-unilaterally:
+**Three decisions taken 2026-09-01**, each recorded in the TDS:
 
-1. Does the **mean (30002)** earn its 384 B of RAM? 30005 measures **0 LSB** of
-   noise over 60 reads. The envelope registers clearly earn theirs. FR-S31 is a
-   Must, so it was built as specified — but the register map is where the
-   question belongs.
-2. **FR-E07 claims a shorted wiper is detectable. It is not.** A field short
-   sits beyond R11, so PA2 sees 10 kΩ to a rail — electrically identical to the
-   wiper at an end stop. Only opens are detectable, and only opens were tested.
-3. **FR-MB07 cannot be automated.** NFR-TST01 scopes itself to criteria
-   "executable over the serial link", but proving the address is *latched* needs
-   a power cycle. Either the exception list names it, or the requirement splits.
+1. **The mean (30002) is KEPT.** The measured 0 LSB of spread over 60 reads is a
+   *clean-bench* figure — short cable, still carriage, no wind loading on the
+   window — and the engine costs 384 B of a 1 792 B budget currently at 61 %.
+   FR-S31 now carries that measurement and the instruction to revisit with
+   **field** noise data rather than bench data.
+2. **FR-E07 narrowed to open circuits only.** It previously claimed an open *or
+   shorted* wiper was detectable. A short is not: R11 sits between the field
+   wiring and PA2, so a short to either rail presents 10 kΩ to that rail —
+   electrically identical to the wiper resting at the corresponding end stop.
+   The requirement now says so, and states the consequence plainly: **a wiper
+   shorted to 0 V reports the window as fully closed.** A cross-check against
+   the end switches would catch it; that is noted as the route, not required.
+3. **FR-MB07 added to NFR-TST01's exception list**, beside FR-MB01, FR-MB04 and
+   FR-MB23. Its *no-address-register* half is link-testable and already covered
+   by TP-B13/B27; only *latched at startup* needs a power cycle, which is
+   exactly what the exception list is for.
+
+**NFR-TST01's criterion is now met in full**: 24 automated, 4 excepted, **0
+unaccounted**. The suite's `BENCH_ONLY` category is empty and the report says so
+rather than warning about a row that no longer exists.
 
 ---
 

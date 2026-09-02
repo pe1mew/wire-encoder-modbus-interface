@@ -70,6 +70,13 @@
  * The threshold sits between them with room either side. It is deliberately
  * nearer the open end: a false "sensor faulty" costs a real reading, and this
  * test's job is to catch a disconnection, not to police noise.
+ *
+ * IT CANNOT CATCH A SHORT, and FR-E07 no longer claims it can (narrowed
+ * 2026-09-01). R11 sits between the field wiring and PA2, so a short to either
+ * rail presents 10 kOhm to that rail -- identical to the wiper resting at the
+ * corresponding end stop. A wiper shorted to 0 V therefore reports the window
+ * as fully closed. Separating the two would need a cross-check against the end
+ * switches, which is not required and not implemented here.
  */
 #define WE_PULL_SPREAD_FAULT 600u
 

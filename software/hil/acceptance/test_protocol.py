@@ -33,21 +33,19 @@ EXCEPTED = {
     "FR-MB01": "analyser decode",
     "FR-MB04": "scope timing",
     "FR-MB23": "bus capture",
+    "FR-MB07": "address latch needs a power cycle",
 }
 
-# Covered by a bench procedure, NOT by this suite, and NOT on NFR-TST01's
-# exception list either. Kept in its own category so the report cannot imply an
-# automated PASS that never happened.
+# Covered by a bench procedure rather than this suite. Empty since 2026-09-01:
+# FR-MB07 moved onto NFR-TST01's exception list, where it belongs — the
+# requirement scopes itself to criteria "executable over the serial link", and
+# proving the address is LATCHED needs a power cycle. Its other half ("there is
+# no address-access register") IS link-testable and is covered by TP-B13/B27,
+# since an unmapped address returns exception 02.
 #
-# FR-MB07 sits here for a reason worth deciding on: NFR-TST01 scopes itself to
-# criteria "executable over the serial link", and FR-MB07's substance is that
-# the address is LATCHED AT STARTUP. Reading the address is executable over the
-# link; proving it does not change until reset is not — it needs a power cycle.
-# So either NFR-TST01's exception list should name it, or FR-MB07 should be
-# split. Until that is decided this row is reported honestly as un-automated.
-BENCH_ONLY = {
-    "FR-MB07": "TP-B02 — jumper moved and power cycled; verified 2026-09-01",
-}
+# Keep this dict. A row that is neither automated nor formally excepted must
+# have somewhere honest to sit, or it ends up quietly claimed as covered.
+BENCH_ONLY = {}
 
 # Which script exercises which requirement. The row IDs are the plan's.
 COVERAGE = {
@@ -141,9 +139,13 @@ def test_nfr_tst01_report(capsys):
               f"{len(BENCH_ONLY)} bench-only, "
               f"{len(EXCEPTED)} excepted by NFR-TST01, "
               f"{len(tds_frmb_ids())} defined in the TDS")
-        print("\n  NFR-TST01 asks every non-excepted ID to report PASS. The")
-        print("  BENCH row cannot do that from an automated run — see the note")
-        print("  above BENCH_ONLY for the decision it needs.\n")
+        if BENCH_ONLY:
+            print("\n  NFR-TST01 asks every non-excepted ID to report PASS. The")
+            print("  BENCH row(s) cannot do that from an automated run — see the")
+            print("  note above BENCH_ONLY for the decision each needs.\n")
+        else:
+            print("\n  Every non-excepted ID is automated. NFR-TST01's criterion")
+            print("  is met by this run: no FAIL, and no ID missing.\n")
 
 
 # ---------------------------------------------------------------------------
