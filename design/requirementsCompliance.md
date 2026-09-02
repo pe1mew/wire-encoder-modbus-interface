@@ -6,8 +6,8 @@
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
 | Checked against | `greenhouse-Controller/design/windowPositionSensorRequirements.MD`, dated 2026-07-28 (marked PRELIMINARY STUDY — not adopted) |
-| This design | `design/TDS.md` **v0.6**, `design/description.md` |
-| Status | Updated through TDS v0.6. The two gaps this analysis originally raised are both closed; what remains is listed in §4. |
+| This design | `design/TDS.md` **v0.7**, `design/description.md` |
+| Status | Updated through TDS v0.7. The two gaps this analysis originally raised are both closed; what remains is listed in §4. |
 
 ---
 

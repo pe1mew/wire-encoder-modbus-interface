@@ -4,7 +4,7 @@
 |---|---|
 | Document | Test plan for the wire-encoder Modbus interface |
 | Version | 0.2 (2026-09-01 — Modbus rows re-traced against the TDS after the first Group B run; 8 rows added, 5 citations corrected) |
-| Traces to | [`TDS.md`](TDS.md) v0.6 — every row below cites the requirement whose verification clause it executes |
+| Traces to | [`TDS.md`](TDS.md) v0.7 — every row below cites the requirement whose verification clause it executes |
 | Records to | [`../software/hil/testReport.md`](../software/hil/testReport.md) |
 | Supersedes | [`integrationPlan.md`](integrationPlan.md) §7, which was a placeholder awaiting hardware |
 
@@ -268,13 +268,25 @@ than assume: the address, the register map and the build differ.
 
 ---
 
-## 6. Group C — blocked until integration stage D
+## 6. Group C — measurement, switches, teach
 
-**Do not run these against the current image.** `main.c` never calls
-`regs_publish_opening()` or `regs_publish_switches()`, so every row here would
-fail for a reason that has nothing to do with what it tests.
+**Unblocked 2026-09-01.** Integration stages D and E are complete: `main.c`
+calls `we_init()` and `meas_open_service()`, and `regs.c` drives the averaging
+engine. Results are in [`../software/hil/testReport.md`](../software/hil/testReport.md).
 
-Blocked rows, by what unblocks them:
+| Row | Traces to | Procedure | Pass criterion |
+|---|---|---|---|
+| TP-C01 | FR-E23 | Detach the draw-wire from the carriage, then drive the window through **three full traverses**. Re-attach and traverse once more. | Status **bit 7** sets after the third traverse and clears on the first traverse with the wire attached. A window rocking at a stop, repeatedly crossing a switch threshold with the wire attached, never sets it. |
+| TP-C02 | FR-E24 | Write 40005/40006 to a deliberately narrow sub-range of the observed travel, then drive the window beyond it in each direction. Repeat on the factory-default calibration. | Status **bit 6** sets after ≥2 measurement windows outside the band and clears on return. On the default calibration it **never** sets, whatever the window does — the band is self-disabling. |
+
+*On TP-C02's setup:* the rig traverses nearly the whole ADC range (measured raw
+0–1022), so it has no electrical headroom and FR-E24 is inert on it by design.
+Writing a narrow calibration synthesises the headroom a correctly installed
+draw-wire would have (`description.md` §8.1). **This is a rig limitation being
+worked around, not a firmware behaviour being bypassed** — an installation
+following §8.1 gives the band for free.
+
+Historical — what these rows were blocked on before stages D and E landed:
 
 | Unblocked by | Requirements |
 |---|---|
