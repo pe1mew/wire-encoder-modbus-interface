@@ -1118,22 +1118,43 @@ probes. Any Saleae row (TP-B24, and TP-B32 if it is ever re-run there) has to be
 captured from the UI and the `.sal` loaded afterwards, not driven end-to-end
 from here.
 
-### Not yet run
+### Outstanding — what is left, and what each needs
 
-Group A rows TP-A03…A09; all of Group C (blocked on integration stage D).
+Nothing below is blocked on software. Stages A–F are complete and every
+requirement reachable with the present equipment has been exercised.
 
-Group B rows that need the bench rather than the master — none of them are
-blocked on software:
+**Blocked on equipment this bench does not have:**
 
-| Row | Traces to | Needs |
+| Row / requirement | Needs | Consequence of leaving it |
 |---|---|---|
-| TP-B24 | FR-S18/S19 | bus capture from the instant of power-on — **the Saleae is now connected, so this is runnable** |
-| TP-B18 | §2.8, FR-MB09 | **PARTIAL** until a factory-reset procedure exists (plan §7) |
+| **TP-A03**, **TP-B23** (FR-S22) | an adjustable supply | The ±15 % supply margin — **60 counts**, the tightest number in the design — stays calculated, never measured. This is the most valuable of the four. |
+| **FR-E03** | a precision resistance box, 5 ratios spanning the range | Electronics accuracy (quantisation + INL) unverified. The **≤3 LSB stability half already passes**; only the ratio sweep is missing. |
+| **FR-E15** | a 5 ms bounce injected electrically | The 20 ms debounce is unverified. Every transition observed on the rig was clean, which is consistent with it working but does not test it. |
+| **FR-E19** (part) | two stops <64 counts apart | The refusal to commit a calibration violating FR-E06 is untested. The rig traverses the full ADC range and cannot present them. |
+| **TP-B36** (FR-S02) | a PCB | The release binary on unmodified hardware. Everything to date carries a breadboard caveat. |
 
-**BLOCKED, both for the same reason:** TP-A03 and **TP-B23** (FR-S22, PVD)
-need an adjustable supply, and this bench has a fixed one. The ±15 % supply
-margin — 60 counts, the tightest number in the design — therefore remains
-calculated, not measured.
+**Not blocked, just not done:**
+
+| Row | Note |
+|---|---|
+| TP-A04–A08 | TP-A04 and TP-A08 also want the adjustable supply; TP-A05 needs +70 °C (really Group D); TP-A07 needs a megohmmeter |
+| TP-B18 | **PARTIAL** until a factory-reset procedure exists (plan §7) — the defaults were observed, not verified |
+| TP-B20 | **ACCEPTED at 13/20 cycles** by decision, to bound flash wear on a prototype |
+| TP-B24 | **PASS** (partial scope) — one cycle on a quiet bus, where the TDS asks for 20 with another master/slave pair active |
+
+**Three decisions waiting**, all raised with evidence and deliberately not taken
+unilaterally:
+
+1. Does the **mean (30002)** earn its 384 B of RAM? 30005 measures **0 LSB** of
+   noise over 60 reads. The envelope registers clearly earn theirs. FR-S31 is a
+   Must, so it was built as specified — but the register map is where the
+   question belongs.
+2. **FR-E07 claims a shorted wiper is detectable. It is not.** A field short
+   sits beyond R11, so PA2 sees 10 kΩ to a rail — electrically identical to the
+   wiper at an end stop. Only opens are detectable, and only opens were tested.
+3. **FR-MB07 cannot be automated.** NFR-TST01 scopes itself to criteria
+   "executable over the serial link", but proving the address is *latched* needs
+   a power cycle. Either the exception list names it, or the requirement splits.
 
 ---
 

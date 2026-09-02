@@ -329,6 +329,25 @@ show we know about them.
 
 ## 9. Known gaps in this plan
 
+**Blocked on equipment, recorded 2026-09-01** — none of these are software gaps,
+and all four were attempted or scoped before being set aside:
+
+- **TP-A03 / TP-B23** need an adjustable supply. Between them they hold the
+  ±15 % supply margin (60 counts), the tightest calculated-but-unmeasured
+  number in the design.
+- **FR-E03** needs a precision resistance box at five ratios. Note the scope:
+  the requirement covers the **electronics** with a divider replacing the pot,
+  and explicitly excludes the draw-wire mechanism's linearity as a separate §6
+  item. The ≤3 LSB stability half already passes; only the ratio sweep is open.
+  *(End to end, the rig scale reads 1000 mm against the device's 999.0 mm —
+  0.1 %, with the residual accounted for as exactly one ADC count. That is §6
+  evidence, not FR-E03.)*
+- **FR-E15** needs a 5 ms bounce injected electrically; a hand-actuated
+  proximity sensor cannot produce one.
+- **FR-E19's FR-E06 refusal clause** needs two stops closer than 64 counts,
+  which a rig traversing the full ADC range cannot present.
+
+
 **Three decisions taken 2026-09-01**, after the citation sweep:
 
 - **TP-B03 deleted.** It measured boot time against FR-S02, which is about a
