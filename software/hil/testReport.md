@@ -684,6 +684,72 @@ see the correction below.
 opening), FR-E18/E19 (teach handshake — both stops are now reachable, so this is
 newly runnable), FR-E15 (needs an injected 5 ms bounce).
 
+### FR-E23 / FR-E24 — sensing health, verified on hardware
+
+The two health indications added in TDS v0.7, tested against the flashed build.
+Firmware: 6 364 B flash, 1 108 B RAM.
+
+**TP-C02 (FR-E24, bit 6) — 5 pass, 0 fail.**
+
+| Calibration | Band | Status | Result |
+|---|---|---|---|
+| Factory default 0/1023 | `[0, 1278]` | `0x0000` | **inert** — covers every reachable code |
+| Narrow, containing raw 269 | `(163, 373)` | `0x0002` | bit 6 clear |
+| Narrow, excluding raw 269 | `(463, 673)` | **`0x0042`** | **bit 6 SET** |
+| Back to containing | `(163, 373)` | `0x0002` | cleared |
+
+The rig traverses raw 0–1022 and so has **no electrical headroom** — FR-E24 is
+inert on it by design. The row synthesises the headroom a correctly installed
+draw-wire would have (`description.md` §8.1) by writing a narrow calibration,
+and **moves the band rather than the window**: the carriage never moves, so
+nothing but the calibration differs between the passing and failing cases.
+
+30001 read 0 while bit 6 was set, which is correct — with the calibration at
+498/638 the resting raw of 269 is below the closed point and FR-E04 clamps. What
+matters is that the opening was still *published*: FR-E24 reports and never
+suppresses, per FR-E16's precedent.
+
+**TP-C01 (FR-E23, bit 7) — PASS, both halves.** With the draw-wire physically
+detached from the carriage:
+
+    972 samples over 240 s
+    30005 spanned 268..269  =  ONE count for the entire run
+    7 arrivals at a stop
+    bit 7 set throughout, bit 6 never set
+
+Seven times the switches witnessed the carriage reaching a stop while the wiper
+moved a single ADC count. Re-attached and traversed once: **268 → 681, status
+back to `0x0000`** — one good departure sequence clears it, as designed.
+
+**This is the failure no electrical test can reach.** With the wire detached the
+potentiometer is *electrically perfect*: it would pass the FR-E07 pull test,
+reads a stable plausible constant, and satisfies FR-E03's ≤3 LSB stability.
+Nothing measurable at the pin distinguishes it from a healthy sensor. Only the
+end switches, witnessing movement independently, can.
+
+**The two-bit signature works as designed**: bit 7 alone is the *mechanism
+stuck* row of the diagnostic table, with bit 6 clear because the default
+calibration makes FR-E24 self-disabling. That is what tells an installer to look
+at the drum rather than the wiring.
+
+**Limits of these runs, so a passing row is not over-read:**
+
+- TP-C01 did **not** observe the transition *into* bit 7 — it was already set
+  from earlier movements when logging began. The run proves the bit *holds*
+  correctly across seven stop arrivals with a frozen wiper. The set transition
+  is covered by `test_health.c` on the host, not on hardware.
+- TP-C02 moved the band, not the window. It does **not** demonstrate a real
+  shorted conductor being caught, because this rig has no headroom for one to
+  fall outside. That case exists only in an installation built to §8.1, and no
+  rig test substitutes for it.
+
+**Host tests: `test_health.c`, 25 cases**, compiling the shipped `health.c`.
+Covering the three properties most likely to be silently wrong: FR-E24's
+self-disabling behaviour on a full-range calibration, the margin saturating
+rather than underflowing at the low edge, and a window *rocking* on its stop not
+counting as a departure — the switch makes and breaks with ~1 count of movement,
+indistinguishable from a stuck wiper except by time away.
+
 ### Group C — the measurement rows, 11 pass 0 fail
 
 Unblocked by stages D and E. Most of Group C needs the window to **move**, which
