@@ -977,13 +977,37 @@ a damp night would fail FR-E03 silently — plausible readings, no fault flag,
 nothing visibly wrong. That is the worst failure mode this device has, and a
 few euros of coating removes it.
 
-## Q4 — can the two front-ends witness each other's failures? — **OPEN, costed**
+## Q4 — should the device report the health of the window's mechanics and sensors? — **OPEN, costed**
 
 Raised 2026-09-01, after FR-E07 was narrowed to open circuits only. Not
 implemented; recorded because establishing it took real work and the reasoning
 should not have to be rediscovered.
 
-### The two blind spots it would close
+### The capability, stated properly
+
+**The purpose is to let the controlling function estimate the health and state
+of the window's mechanics and sensors.** Not a safety interlock for one use
+case — a general diagnostic capability.
+
+This device already sees everything needed for it. Two independent front-ends
+observe the same physical window, and their agreement — **statically** at rest,
+and **dynamically** through a movement — characterises whether the system is
+operating properly. Nothing else in the installation is positioned to make that
+comparison.
+
+**Today there is no indication at all.** A draw-wire that is tangled, snapped,
+seized or slipping produces a stable, plausible, in-range number that passes
+every existing test: the FR-E07 pull test, FR-E03's ≤3 LSB stability, the whole
+Group C matrix. The device cannot distinguish a working mechanism from a dead
+one, and neither can the master.
+
+*(An earlier draft of this note framed the rationale around storm protection —
+"check everything is shut before a storm" from `description.md`. That is one
+**consequence** among several, not the reason. Corrected 2026-09-01: the reason
+is health and state reporting generally, of which a wrongly-reported "closed" is
+one symptom.)*
+
+### The two blind spots it closes as a side effect
 
 They are documented separately and neither has any other mitigation:
 
@@ -1058,8 +1082,7 @@ switches supply it.
 | Switch transitions, **opening frozen** | **the position path is at fault** |
 | Opening sweeps the full range, switch never fires at the endpoint | **the switch path is at fault** |
 
-**This is what makes the feature worth more than the shorted-wiper case
-suggests.** A short is only one way to freeze the reading. So is a seized drum,
+**This is the heart of the capability, not a bonus.** A short is only one way to freeze the reading. So is a seized drum,
 a snapped draw-wire, a slipped grub screw on the pot shaft, or a coupling that
 has let go. In every one of those the potentiometer is **electrically perfect**:
 the FR-E07 pull test passes, the reading is stable and plausible, FR-E03's
@@ -1115,22 +1138,33 @@ because it needs neither a teach nor a calibrated relationship between the front
 ends. Two raw codes and a switch edge are the whole input. If only one is ever
 built, build that one.
 
-### What decides it
+### What is actually still open
 
-**Does anything act on "the window is closed"?** If a controller shuts down
-heating, or clears an alarm, on that basis, then a shorted wiper reporting
-"fully closed" is a fail-unsafe path and this earns its place. If the value is
-advisory, §4.4.6's documented limitation is an honest enough answer and this
-stays a note.
+The *whether* is settled: this is a general health-and-state capability the
+device is uniquely placed to provide, and without it a stuck or broken wire has
+no indication whatsoever. What remains is **how**, and these need answering
+before the requirements are written:
 
-**A second question, which may matter more:** *is a stuck draw-wire an expected
-failure over the product's life?* A spring-loaded drum on a moving window is a
-wearing part. If it is, FR-E23 is not a nicety — it is the only detection this
-design has for the mechanism silently ceasing to measure while reporting a
-perfectly plausible number.
+1. **One concept or two?** FR-E22 (static) and FR-E23 (dynamic) are drafted as
+   separate requirements with separate status bits. They could equally be one
+   "sensing inconsistent" indication with the distinction left to a diagnostic
+   register. Two bits let a master tell *at rest* disagreement from *did not
+   respond to movement*, which point at different faults; one bit is simpler and
+   cheaper in the register map.
+2. **Thresholds.** FR-E23's [Y] — how little raw movement across a switch
+   transition counts as "not following"? The rig gives real numbers to work
+   from: the switches fire at raw 56 and 834 against a 0–1022 traverse, so a
+   healthy transition moves the wiper by hundreds of counts. FR-E22's [X], the
+   band around a calibrated endpoint, is the harder one.
+3. **Bit allocation.** FR-S33 pins bits 6–15 to 0, so bits 6 and 7 are free —
+   but changing a published bitfield is a register-map change, and §2.7 is what
+   integrators code against.
+4. **What a master should do with it.** The device reports and does not act
+   (§10). But a health indication nobody is told how to interpret is decoration:
+   `description.md` §10 or the integrator-facing text needs a sentence on it.
 
-Deliberately **not** written into the TDS until that question is answered. A
-Should requirement added speculatively is a Should requirement nobody verifies.
+Deliberately **not** written into the TDS until the shape is settled. A Should
+requirement added speculatively is a Should requirement nobody verifies.
 
 # Design directives
 
