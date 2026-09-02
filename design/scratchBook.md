@@ -977,7 +977,25 @@ a damp night would fail FR-E03 silently — plausible readings, no fault flag,
 nothing visibly wrong. That is the worst failure mode this device has, and a
 few euros of coating removes it.
 
-## Q4 — should the device report the health of the window's mechanics and sensors? — **OPEN, costed**
+## Q4 — should the device report the health of the window's mechanics and sensors? — **ANSWERED, implemented**
+
+> **Resolved 2026-09-01.** Yes. Adopted as **FR-E23** (bit 7, the position
+> follows the carriage) and **FR-E24** (bit 6, the raw code is reachable) in TDS
+> v0.7, implemented in `health.c`, and verified on hardware — TP-C01 and TP-C02
+> in `software/hil/testReport.md`, plus 25 host cases in `test_health.c`.
+>
+> **FR-E22, the static agreement check, was NOT adopted.** The two-geometries
+> analysis below is why: in a real installation clamping is the resting state,
+> so it false-alarms, and the latch that repairs that blinds it to the frozen
+> wiper it was invented for. Its draft stays here in case the reasoning is ever
+> wanted; the numbering skips E22 so the adopted IDs stay stable.
+>
+> The reasoning below is kept in full, including the wrong turns — the
+> storm-protection framing that had to be corrected, and the "hundreds of
+> counts" threshold guess that the hysteresis arithmetic demolished. Both
+> changed the design, not just the wording.
+
+
 
 Raised 2026-09-01, after FR-E07 was narrowed to open circuits only. Not
 implemented; recorded because establishing it took real work and the reasoning

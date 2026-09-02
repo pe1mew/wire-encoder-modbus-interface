@@ -5,7 +5,7 @@
 | Document | Functional description — what the device does, in prose |
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
-| Status | Describes the **intended** function. The Modbus and platform half is implemented; the measurement path is not yet written (`design/integrationPlan.md` stages D–F). Nothing here has run on hardware. |
+| Status | Describes the **implemented** function. Integration stages A–F are complete and every behaviour below has run on hardware; results in `software/hil/testReport.md`. Updated 2026-09-01 for TDS v0.7 (the §3.1 health bits). |
 | Related docs | `design/TDS.md` — the same behaviour as numbered, testable requirements; `design/scratchBook.md` — the reasoning behind the choices; `design/softwareArchitecture.md` — how it is built |
 
 This document is for someone who needs to understand what the device does
@@ -137,14 +137,23 @@ All four are in units of 0.1 mm.
 
 **Whether to believe any of it**
 
-- A **status bit** for a wiper fault — the position sensor is disconnected or
-  shorted.
-- A **status bit** for a switch-loop fault — the switch cable is cut,
-  shorted, or wired wrongly.
+- A **status bit** for a wiper fault — the position sensor is **disconnected**.
+  *(A wiper shorted to a supply rail is not detectable this way and this bit
+  does not claim it: the protection resistor makes a short look identical to
+  the wiper resting at an end stop. The two health bits below are what catch
+  it.)*
+- A **status bit** for a switch-loop fault — **both end switches reading active
+  at once**, which a working window cannot produce, so a switch or its mounting
+  has failed. *(A cut or shorted switch cable reads as "no switch active" and is
+  **not** flagged by this bit — it produces a missed stop rather than a false
+  one.)*
 - Two status bits covering warm-up: *no measurement window has completed
   yet*, and *the averaging period has not filled yet*. A master reading
   immediately after power-on knows the numbers are not yet meaningful rather
   than having to guess.
+- **Two health bits** describing the credibility of the position signal itself
+  — see §3.1. They are what turn "the window is closed" into something you can
+  distinguish from "we have no idea where the window is".
 - **Seconds since the last valid reading**, a plausibility companion to the
   fault bits: a rising count with no fault flagged means readings have
   stopped arriving without the fault detector having tripped yet.
@@ -164,6 +173,39 @@ All four are in units of 0.1 mm.
 The two fault front-ends are independent: a broken switch cable does not stop
 the opening being reported, and a broken wiper does not stop the switches
 being reported.
+
+### 3.1 The two health bits — is the position signal credible?
+
+The device watches its two front-ends — the draw-wire position and the end
+switches — against each other, and reports when they stop agreeing. **Neither
+bit changes the reported opening**: they tell you how far to trust it.
+
+| Bit 6 | Bit 7 | What to check |
+|---|---|---|
+| clear | clear | Nothing. Note bit 7 is only tested when the window moves through a stop. |
+| clear | **set** | **The draw-wire mechanism.** The switches say the window moved; the position did not follow. Look for a tangled, snapped or slipping wire, a seized drum, or a loose coupling. The potentiometer itself is usually fine. |
+| **set** | clear | **The position signal is out of range** but still moving — a partially shorted wiper, or a calibration that no longer matches the installation. |
+| **set** | **set** | **The position signal is dead.** It neither follows the window nor reads anything reachable — most often a wiper conductor shorted to a rail, or broken. |
+
+**Why this catches what nothing else can.** A draw-wire that is tangled,
+snapped, seized or slipping leaves the potentiometer *electrically perfect*. It
+reads a stable, plausible, in-range number; every electrical test of the sensor
+passes. Only the end switches, witnessing movement independently, can tell you
+the mechanism has stopped measuring. Verified by detaching the draw-wire from
+the carriage: seven arrivals at a stop while the reading moved a single count.
+
+**Bit 6 depends on how the draw-wire was installed.** It reports a reading the
+window cannot physically produce — which only exists if the draw-wire has
+electrical range to spare at both ends (§8.1). Where the draw-wire is sized so
+that fully closed sits at one extreme, there is no spare range, the check is
+**automatically inert**, and a shorted conductor reads exactly like a correctly
+closed window. **This is the single strongest reason to follow §8.1.**
+
+**These are diagnostics, not alarms.** They are deliberately slow: bit 7 needs
+three separate movements before it speaks, so a window rocking slightly at a
+stop is never mistaken for a failure, and bit 6 needs the condition to persist
+across two measurement windows. Read a set bit as *schedule an inspection*, not
+*stop the plant*.
 
 ## 4. The measurement cycle
 
