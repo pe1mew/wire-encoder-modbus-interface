@@ -1,5 +1,5 @@
 @startuml component
-title Wire Encoder Modbus Interface — Firmware Component Diagram (target)
+title Wire Encoder Modbus Interface — Firmware Component Diagram (as built)
 
 skinparam componentStyle rectangle
 skinparam shadowing false
@@ -23,12 +23,13 @@ component "board\nIWDG · PVD · address jumper (PC1)" as board #EAEFEF
 component "mb\nModbus RTU driver (USART1/PD6)" as mb
 component "regs\nregister image (hub)\n+ ladder band decode" as regs #DCEBE9
 
-' ---- measurement pipeline (NOT YET IMPLEMENTED) ----
-component "meas_open\nwindow · scale · fault" as mo #FFF4E0
-component "we\nowns the ADC:\nwiper burst + float detect,\nladder channel" as we #FFF4E0
+' ---- measurement pipeline ----
+component "meas_open\nwindow · scale · fault\nwiper/ladder on ALTERNATE ticks" as mo
+component "we\nowns the ADC:\nwiper burst + float detect,\nladder channel\n≥241-cycle sample (FR-E12)" as we
 
 ' ---- helpers / storage ----
-component "avg\nboxcar mean + min/max" as avg #FFF4E0
+component "avg\nboxcar mean + min/max" as avg
+component "health\nFR-E23 stuck · FR-E24 band\nstatus bits 7 / 6" as health #DCEBE9
 component "persist\nflash store · FR-S39" as persist
 
 ' ==== data flow (sensor → bus) ====
@@ -41,6 +42,8 @@ mb  <--> master : RTU frames\nFC03/04/06/16
 
 ' ==== helpers / storage ====
 regs --> avg : add / read (mean, min, max)
+mo --> health : window raw + switch state
+health --> regs : status bits 6 / 7
 regs <--> persist : load (boot) / save (FR-S39)
 
 ' ==== orchestration (control) ====
@@ -54,7 +57,6 @@ legend right
   solid = runtime data / calls
   dotted = control
   regs is the central register hub
-  ORANGE = planned, not yet implemented
   ONE ADC, two channels: wiper + switch ladder
   the two front-ends fault independently (FR-E16)
 endlegend

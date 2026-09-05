@@ -5,8 +5,9 @@ with [PlatformIO](https://platformio.org/) using the
 [ch32v003fun](https://github.com/cnlohr/ch32v003fun) framework and flashed with a
 **WCH-LinkE** probe over the 1-wire SDI interface.
 
-This is the PlatformIO counterpart to the Makefile/ch32fun
-[nanoCH32V003 blinky](../nanoCH32V003/blinky/) in this repo.
+This is the PlatformIO counterpart to the Makefile/ch32fun `nanoCH32V003/blinky`
+example. That directory lives in the project this template was carried over
+from, **not** in this repo — the link here pointed at it until 2026-09-05.
 
 ## Layout
 

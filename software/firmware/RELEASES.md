@@ -22,4 +22,4 @@ released.
 
 | Version | Date | Commit / tag | Binary (SHA-256) | Notes |
 |---|---|---|---|---|
-| 1 | — | *unreleased* | — | Not releasable. The firmware has no measurement service (`design/integrationPlan.md` stages D–F are not started); it answers the register map but returns the FR-S23 pre-first-window value for every measurement. Version 1 will be tagged at the first release that actually measures. |
+| 1 | — | *unreleased* | — | **Candidate, not yet tagged.** The original blocker is gone: integration stages A–F are complete and the firmware measures, publishes and reports health (verified — `software/hil/testReport.md`). Outstanding before a tag is warranted: **FR-E03** (five-ratio linearity, needs a precision resistance box), **FR-E15** (switch bounce, needs a 5 ms injector) and **TP-A03/TP-B23** (±15 % supply margin, needs an adjustable PSU). All three are blocked on instruments, not on code. Whether to release against open requirements is the maintainer's call. |

@@ -96,7 +96,7 @@ To be executed as `software/hil/we_check.py`.
 | 2 | Five-point linearity across travel | FR-E03 | Precision divider at 5 ratios spanning the range; each within ±0.1 % of full travel |
 | 3 | Stability at a fixed point | FR-E03, FR-E12 | 100 reads over 60 s span ≤3 LSB |
 | 4 | Oversampling actually happens | FR-E13 | Code review + row 3; 32 consecutive reads span ≤3 counts |
-| 5 | Sample time ≥71 cycles | FR-E12 | Code review; confirmed by row 3 with the real 10 kΩ source impedance |
+| 5 | Sample time ≥241 cycles | FR-E12 | Code review of the `ADC1->SAMPTR2` selector; confirmed by row 3 at the real 12.5 kΩ source impedance. **Read FR-E12, not a header comment** — this row said ≥71 until 2026-09-05 and the driver was built to it (`docs/gotcha-log.md`) |
 | 6 | Absolute-after-reset | FR-E01 | Power-cycle with the wire held at a fixed extension; first sample matches the pre-reset sample, with no movement |
 | 7 | Invalid sample on disconnect | FR-E07 | Physically lift the wiper wire (a "disabled" M2K AWG channel is ~50 Ω, **not** high-Z — it cannot emulate a disconnection) |
 | 8 | Invalid sample on short | FR-E07 | Wiper shorted to rail and to GND in turn |

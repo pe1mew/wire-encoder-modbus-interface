@@ -32,9 +32,13 @@ The wiper is a plain voltage divider from the supply rail, so:
   the ADC, so rail ripple and rail drift cancel exactly. No external
   reference — adding one would *break* that cancellation, which is
   counter-intuitive enough to be worth writing down.
-- It is **electrically identical to the sibling project's wind vane** (11 kΩ
-  pot on PA2, 10-bit ADC, ≥71-cycle sample time, float detection by pull-
-  resistor toggle). That driver is HIL-verified on silicon and is the
+- It is **nearly identical to the sibling project's wind vane** (11 kΩ pot on
+  PA2, 10-bit ADC, float detection by pull-resistor toggle). *One divergence,
+  added 2026-09-05: FR-E21 puts 10 kΩ of series protection in front of the
+  wiper, which the vane does not have. That raises the source impedance to
+  12.5 kΩ and with it the sample time — FR-E12 requires ≥241 cycles here where
+  the vane uses ≥71. Copying the vane's ADC setup verbatim is exactly how the
+  driver shipped wrong once; see `docs/gotcha-log.md`.* That driver is HIL-verified on silicon and is the
   reference implementation. What differs is only what happens *above* the
   driver: a linear opening instead of a circular heading, so none of the
   circular-mean machinery carries over.
@@ -373,9 +377,9 @@ Two smaller consequences:
 ### Firmware consequences
 
 - The ADC now multiplexes two channels: A0 (wiper, ≥16 conversions) and A2
-  (ladder, a couple of conversions). Same ≥71-cycle sample time serves both
+  (ladder, a couple of conversions). Same ≥241-cycle sample time serves both
   — the ladder's source impedance with a switch closed is ≤ 5 kΩ, well under
-  the 10 kΩ the sample time was chosen for.
+  the 12.5 kΩ the sample time is sized for.
 - Debounce stays in firmware, 20 ms, as a SysTick comparison — never a
   delay. Nothing in this loop is allowed to block.
 - The status register needs more than one bit now: at minimum *end reached*

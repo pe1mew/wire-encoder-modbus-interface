@@ -11,7 +11,7 @@ participant "main\n(super-loop)" as main
 participant "mb\n(Modbus)" as mb
 participant "regs\n(registers)" as regs
 participant "persist\n(flash)" as persist
-participant "meas_open\n(planned)" as meas
+participant "meas_open" as meas
 participant "board\n(watchdog)" as board
 
 note over main
@@ -45,7 +45,7 @@ loop every main-loop pass
   end
 
   main -> meas : meas_open_service()
-  note right : NOT YET IMPLEMENTED —\ninternally paced; on each 40002 window:\n16-conversion ADC burst (<1 ms),\nFR-E04 scaling, publish
+  note right : internally paced at 40 Hz; wiper and\nswitch ladder on ALTERNATE ticks so no\nsingle pass pays for both.\n16 conversions @241 cyc = ~0.34 ms,\nthen FR-E04 scaling + publish.\nBUDGET: a pass >1.146 ms drops a\nModbus byte to overrun (silently).
 
   opt 1 s elapsed
     main -> regs : regs_second_tick()  (uptime, reading-age,\nFR-E07 fault timer)

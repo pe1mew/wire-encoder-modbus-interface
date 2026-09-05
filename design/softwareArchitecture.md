@@ -63,9 +63,11 @@ PC2/DE low first → PC1 address latch → sensor front-end ready (one ADC
 self-calibration covering both channels) → IWDG on → USART1 receiver enabled
 last.
 
-**Current state:** `main.c`, `board.c`, `regs.c`, `persist.c` and the `mb`
-driver are in the tree and build. `opening_service()` does not exist yet —
-the measurement registers hold their FR-S23 pre-first-window value.
+**Current state (2026-09-05):** all modules are in the tree, built and
+HIL-verified — integration stages A–F are complete. The measurement service
+runs at 40 Hz, and the wiper and the switch ladder are serviced on
+**alternate ticks** so that no single loop pass pays for both. That is not a
+style choice: see the blocking budget in §5.
 
 *See §7 for the component, super-loop sequence, and Modbus state-machine
 diagrams.*
@@ -108,8 +110,8 @@ FR-E10 rate estimate), but a missed window costs one sample, not a
 reference.
 
 **Nothing in this firmware blocks for long.** The ADC burst — 16
-conversions at the ≥71-cycle sample time, plus one on the switch ladder —
-totals well under 1 ms, and the FR-E15 switch debounce is a comparison
+conversions at the ≥241-cycle sample time, plus one on the switch ladder —
+totals ~0.36 ms, and the FR-E15 switch debounce is a comparison
 against a SysTick stamp, not a delay: a candidate state simply has to survive
 20 ms of calls. The only meaningful blocking operations are the ~33 ms
 response TX and the ~6 ms flash commit, both inherited, both deliberately
@@ -142,25 +144,33 @@ project's measured typical case, and this firmware's loop is strictly
 lighter. Meets FR-MB21's 95%-within-15 ms with margin, and FR-MB20's 100 ms
 hard limit trivially.
 
-**As-built (skeleton, 2026-07-28):** release build 3 568 B flash / 616 B
-RAM — a quarter of the flash ceiling and a third of the RAM ceiling, so the
-measurement service and the averaging engine have ample room. Record the
-release numbers here when they land.
+**As-built (stages A–F complete, measured 2026-09-05):** release build
+**6 364 B flash (44.4 %) / 1 108 B RAM (61.8 %)**. RAM is the tighter of the
+two — `avg.c`'s ring is ~384 B of it — with ~684 B of headroom left.
+
+**The blocking budget — the constraint no requirement states.** `mb_rx_service`
+polls a single-byte USART register, so any loop pass longer than **one
+character time (1.146 ms at 9600)** loses a byte to overrun. FR-MB24 then
+discards the frame **without** incrementing 30009, because an overrun is not a
+CRC error — so the request vanishes leaving no trace in any counter. Stage D
+dropped **9.7 %** of requests before this was understood. Any work added to the
+loop must be costed against the *pass* time, not the measurement window.
 
 ## 6. Module split
 
 | Module | Contents | State |
 |---|---|---|
-| `main.c` | The super-loop and window pacing | **in tree** (no measurement call yet) |
+| `main.c` | The super-loop and window pacing | **in tree** |
 | `board.c` | Clocks, GPIO, FR-S18 init order, PC1 address latch, IWDG + PVD | **in tree**, inherited |
 | `sensors.h` | Build-type byte and the raw full-scale default; no variant selector | **in tree** |
 | `mb.c` | Framing, CRC, FC dispatch, exceptions, DE control + remap-switching line discipline — referenced in place from `software/drivers/modbus_rtu` | **in tree**, inherited, HIL-verified in the sibling project |
 | `regs.c` | Register image + table-driven `{addr, min, max}` validator — FR-MB19/22/28 become one code path; the FR-S31 + FR-E06 cross-validate hook; persist load/save wiring; the §4.4 ladder band decode + FR-E15 debounce | **in tree** |
 | `scale.c` | FR-E04 two-point opening scaling — direction-agnostic, clamped both ends, tight overflow bound. Deliberately hardware-free so the host test in `software/firmware/test/` exercises the shipped code | **in tree**, host-tested |
 | `persist.c` | FR-S39 holding-register persistence — two-page flash ping-pong, power-loss atomic | **in tree**, inherited |
-| `meas_open.c` | Window pacing, FR-E04 scaling, FR-E07 fault machine, FR-E10 movement rate | **planned** (integration stage D) |
-| `we.c` | Raw-code acquisition: 16-conversion ratiometric ADC burst on the wiper with float detection, plus the PC4 ladder channel — to be referenced in place from `software/drivers/wire_encoder` | **planned** (driver phase 1) |
-| `avg.c` | Boxcar/two-stage averaging + FR-E08 min/max tracking (FR-S31) | **planned** (integration stage E) |
+| `meas_open.c` | Window pacing, FR-E04 scaling, FR-E07 fault machine, FR-E10 movement rate. Wiper and ladder on **alternate ticks** (see the blocking budget, §5) | **in tree**, HIL-verified (stage D) |
+| `we.c` | Raw-code acquisition: 16-conversion ratiometric ADC burst on the wiper with float detection, plus the PC4 ladder channel. Referenced in place from `software/drivers/wire_encoder`. **Sample time ≥241 cycles (FR-E12), not the sibling project's ≥71** — FR-E21's series resistor raises the source impedance to 12.5 kΩ | **in tree**, HIL-verified |
+| `avg.c` | Boxcar/two-stage averaging + FR-E08 min/max tracking (FR-S31). Blocks carry **min/max, not a block mean** — a mean makes the envelope wrong while still looking plausible | **in tree**, 26 host tests (stage E) |
+| `health.c` | FR-E23 position-not-following and FR-E24 plausible band — status bits 7 and 6. FR-E24 is **self-disabling** on a full-range calibration, which is what lets it need no persisted "was taught" flag | **in tree**, 25 host tests (stage F) |
 | `debug_uart.c` | PD6 TX-only tracing (driver phases only; absent from release builds) | **in tree**, inherited |
 
 Driver development happens standalone per `design/driverDevelopment.md`;
@@ -168,10 +178,8 @@ this document is the contract the driver integrates back into.
 
 ## 7. Diagrams (UML)
 
-The Modbus state machine (§7.3) reflects the **shipped, verified**
-implementation carried over from the sibling project. The component and
-super-loop diagrams show the **target** design, with planned modules
-marked. Sources live in [`design/diagrams/`](diagrams/) as PlantUML;
+All three diagrams now reflect the **shipped, verified** implementation;
+nothing in them is aspirational. Sources live in [`design/diagrams/`](diagrams/) as PlantUML;
 regenerate the PNGs with:
 
 ```sh
@@ -185,8 +193,8 @@ regenerate the PNGs with:
 Source: [`diagrams/component.puml`](diagrams/component.puml). The
 potentiometer → `we` → `meas_open` → **`regs` hub** → Modbus pipeline, with
 the cross-cutting `main` super-loop and `board` safety services, and the
-`avg` / `persist` satellites off the hub. Solid = runtime data/calls,
-dotted = control; orange = planned, not yet implemented.
+`avg` / `health` / `persist` satellites off the hub. Solid = runtime
+data/calls, dotted = control.
 
 ### 7.2 Super-loop sequence — one cooperative iteration (see §2, §3)
 

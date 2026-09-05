@@ -199,6 +199,70 @@ that also monitors its own cable.
   `we.h` API contract; **no implementation yet**, deliberately, so the
   firmware cannot link against a stub that looks like a driver.
 
+### Added — software, integration stages D–F (2026-09-01)
+
+The firmware went from skeleton to complete. All of the below is HIL-verified;
+evidence in [`software/hil/testReport.md`](software/hil/testReport.md).
+
+- **`we.c` — the ADC driver** (stage D). 16-conversion ratiometric burst on the
+  wiper (PA2/ch0), the switch ladder on PC4/ch2, FR-E07 float detection by
+  pull-resistor toggle. ADC at 12 MHz (`RCC_ADCPRE_DIV4`), sample time
+  **241 cycles**.
+- **`meas_open.c` — the measurement service** (stage D). Paced at 40 Hz, with
+  the wiper and the switch ladder on **alternate ticks**.
+- **`avg.c` — FR-S31 averaging** (stage E). One 64-entry ring of
+  (mean, min, max), ~384 B; exact for windows ≤64, blocks of ⌈N/64⌉ above.
+  Blocks carry **min/max, not a block mean**. 26 host tests.
+- **`health.c` — FR-E23 and FR-E24 sensing health** (stage F). Status **bit 7**
+  reports a position that does not follow the carriage — the draw-wire snapped,
+  tangled or slipping, which is electrically invisible. Status **bit 6** reports
+  a raw code outside the plausible band. FR-E24 is **self-disabling** on a
+  full-range calibration, which is what lets it need no persisted "was taught"
+  flag and leaves `rec_t` at 20 bytes. 25 host tests.
+- **Traceability gates** — `software/hil/acceptance/test_traceability.py` fails
+  the build if any TDS requirement has no test row, if a row cites an id that
+  does not exist, or if an id is abbreviated (`FR-E01, E02` hides two ids from
+  every checker). Covers all four requirement families.
+- As-built: **6 364 B flash (44.4 %) / 1 108 B RAM (61.8 %)**.
+
+### Fixed (2026-09-01)
+
+- **FR-E12 violated by the ADC driver.** `we.c` configured a 73-cycle sample
+  time. FR-E12 requires **≥241**: FR-E21's 10 kΩ series protection lifts the
+  source impedance to 12.5 kΩ, above the 10 kΩ the old ≥71 figure was chosen
+  for. The driver had been written to `we.h`'s front-end note, a *copy* of the
+  requirement that had already drifted. Corrected in the driver, and on
+  2026-09-05 in the five documents that still quoted the superseded number —
+  including the TDS itself, twice.
+- **Requests silently lost when a loop pass ran long.** `mb_rx_service` polls a
+  single-byte USART register, so a pass longer than one character time
+  (**1.146 ms** at 9600) loses a byte to overrun; FR-MB24 then discards the
+  frame *without* incrementing 30009, because an overrun is not a CRC error.
+  Stage D dropped 9.7 % of requests before this was found. Fixed by splitting
+  the wiper and ladder across alternate ticks. **This budget appears in no
+  requirement** — it is documented in the firmware README and §5 of
+  `softwareArchitecture.md`.
+
+### Changed — requirements (2026-09-01)
+
+- **TDS to v0.7.** FR-E23 and FR-E24 added; FR-S33 and §2.7 define status bits
+  6 and 7; **FR-E07 narrowed to opens only** — a wiper shorted to either rail is
+  indistinguishable from a legitimate end-stop reading, so claiming to detect it
+  was false; FR-MB07 added to NFR-TST01's exception list; FR-MB28's ">123"
+  clause dropped.
+- **FR-E22 deliberately not adopted.** It false-alarms in the real geometry,
+  where clamping is the resting state, and the latch that would fix it blinds it
+  to the frozen wiper it was invented for. The numbering skips E22 so the
+  adopted ids stay stable. Reasoning in `design/scratchBook.md` Q4.
+- **FR-WP07 flagged conditional.** Status bit 3 reports the *sensor*, not the
+  window: where a sensor's active zone is narrow and the leaf travels past it,
+  bit 3 reads *not at a stop* with the window fully closed.
+- **Installation requirements** (`design/description.md` §8.1). The draw-wire
+  must have **≥10 % headroom at each end** of travel and must never be linked to
+  the window's physical end positions. This is load-bearing, not advice: if
+  fully-closed sits at an electrical extreme, a shorted conductor reads exactly
+  like a correctly closed window and no firmware can separate them.
+
 ### Hardware decisions
 
 - **End switches: LJ18A3-8-Z/BX inductive proximity sensors** (2026-07-29).

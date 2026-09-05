@@ -392,9 +392,9 @@ window and has more than one bit's worth to say, so it takes the analog pin
 (§4.4). Swapping them back would cost the supervision for nothing.
 
 Consequence: the ADC is multiplexed between channel 0 (wiper) and channel 2
-(switch ladder). Both sit behind the same ≥71-cycle sample time — the
-ladder's source impedance with a switch closed is ≤5 kΩ, well inside the
-10 kΩ that setting was chosen for (FR-E12).
+(switch ladder). Both sit behind the same ≥241-cycle sample time — the
+ladder's source impedance with a switch closed is ≤5 kΩ, comfortably
+inside the 12.5 kΩ that setting is sized for (FR-E12).
 
 The only thing given up is PC1's 5 V tolerance on the switch loop; the §4.4
 ladder is fed from the board's own 3.3 V pull-up and never needed it.
@@ -805,8 +805,9 @@ Everything here is genuinely undecided. Items are removed (or kept with a
 "resolved" note for traceability) as they close.
 
 - **Sensor identification.** Manufacturer, model, wire travel length, and the
-  potentiometer's conformity/linearity grade. FR-E12's ≥71-cycle sample time
-  is set for the known 10 kΩ element; the accuracy split in FR-E03 (firmware
+  potentiometer's conformity/linearity grade. FR-E12's ≥241-cycle sample time
+  is sized for a 12.5 kΩ source — the element's 2.5 kΩ at mid-scale plus
+  FR-E21's 10 kΩ series protection — so a different element changes it; the accuracy split in FR-E03 (firmware
   ±0.1 % of full travel vs the mechanism's own error) cannot be closed
   without the mechanical specification.
 

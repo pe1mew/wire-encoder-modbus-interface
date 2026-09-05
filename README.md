@@ -23,15 +23,17 @@ The 40/45 pair is deliberately clear of the sibling
 [`windmeters-modbus-interface`](https://github.com/pe1mew/windmeters-modbus-interface)
 family (30–37), so both can share one RS-485 segment.
 
-## Project status (2026-07)
+## Project status (2026-09-05)
 
 | Area | State |
 |---|---|
-| Requirements | [`design/TDS.md`](design/TDS.md) **v0.4** — §2 Modbus contract inherited and proven; §3 measurement requirements drafted; §4 hardware open |
-| Drivers | Modbus RTU + debug UART carried over HIL-verified; the encoder driver (`software/drivers/wire_encoder/`) is **not yet written** — its API contract is drafted in [`design/driverDevelopment.md`](design/driverDevelopment.md) |
-| Product firmware | Skeleton only: board bring-up, register image, flash persistence and the Modbus service build and run; **no measurement service yet** ([`design/integrationPlan.md`](design/integrationPlan.md) stage C) |
-| Hardware/HIL | No schematic yet — `hardware/KiCad/` holds the symbol libraries only. HIL harness scaffolding in place, check scripts to be written |
-| Release | No firmware version tagged ([`software/firmware/RELEASES.md`](software/firmware/RELEASES.md)) |
+| Requirements | [`design/TDS.md`](design/TDS.md) **v0.7** — **79 requirements** (28 FR-MB, 20 FR-S, 23 FR-E, 8 NFR), every one traced to a test row and **gate-enforced** by `software/hil/acceptance/test_traceability.py` |
+| Drivers | Modbus RTU + debug UART carried over HIL-verified; the encoder driver (`software/drivers/wire_encoder/`) is **written, verified and integrated** |
+| Product firmware | **Complete.** Integration stages **A–F done** ([`design/integrationPlan.md`](design/integrationPlan.md)) — measurement, averaging, persistence and sensing health. 6 364 B flash (44 %), 1 108 B RAM (62 %). A healthy device reports status `0x0000` |
+| Hardware/HIL | Schematic and PCB layout in `hardware/KiCad/`; the build under test is still a **breadboard**, so every Group A result carries that caveat. HIL rig complete: ADALM2000 RS-485 master, Saleae Logic16, and a built window emulator |
+| Testing | 3 host suites (`scale`, `avg`, `health`), 27 HIL scripts, 11 acceptance tests. Results in [`software/hil/testReport.md`](software/hil/testReport.md) |
+| Blocked | Four items, all on **instruments, not code**: adjustable PSU (±15 % supply margin, TP-A03/TP-B23 — the tightest unmeasured number), a PCB (TP-B36), a precision resistance box (FR-E03), a 5 ms bounce injector (FR-E15) |
+| Release | No firmware version tagged yet; `fw-v1` is a candidate pending the above ([`software/firmware/RELEASES.md`](software/firmware/RELEASES.md)) |
 
 ## Hardware
 

@@ -3,9 +3,9 @@
 | | |
 |---|---|
 | Document    | Window and window-controller emulator |
-| Version     | 0.3 (draft — control logic **and its relay realisation accepted** 2026-08-08; mechanical envelope and drive open) |
-| Date        | 2026-08-07 |
-| Status      | Specification only. Nothing built. §2 and §3 are settled and may be built to; §5 and §8 are not. |
+| Version     | 0.4 (control logic **and its relay realisation accepted** 2026-08-08; **built and in service** 2026-09-01) |
+| Date        | 2026-09-05 |
+| Status      | **Built and in bench service.** The rig closed FR-E01, FR-E10, FR-E14, FR-E17, FR-E18, FR-E19 and EM-M05, and carried TP-C01's draw-wire detachment test. Command relays are driven from the M2K. Evidence in [`software/hil/testReport.md`](../software/hil/testReport.md); drive scripts are `software/hil/movement.py`, `teach.py`, `fr_e01.py` and `em_m05.py`. §5 and §8 remain specification only. |
 | Scope       | The emulator alone: a carriage that travels, and the controller logic that drives it. Anything mounted **on** the rig for testing is specified by its own documentation, not here. |
 
 ---
@@ -29,6 +29,27 @@ measure anything — it becomes the source of the fault, and an invisible one,
 because a failed test looks identical whichever end of the setup is wrong.
 
 ---
+
+### 1.1 As-built characteristics that affect how results read
+
+Measured on the rig as it stands, 2026-09-01. Both matter when interpreting a
+test that passes on it.
+
+- **The rig traverses the full ADC range, raw 0–1022.** It has essentially no
+  electrical headroom at either end. That makes it the **worst case for
+  FR-E24**: the plausible band covers every reachable code, so the check is
+  inert here *by design*. A passing TP-C02 is therefore **not** evidence that
+  the band protects a field installation — TP-C02 synthesises the headroom by
+  moving the band instead of the carriage. A correctly installed draw-wire has
+  ≥10 % headroom at each end (`description.md` §8.1) and gets protection this
+  rig cannot demonstrate.
+- **The end-stop sensors stay active all the way to the mechanical limit.**
+  This is required by EM-M03, not a defect — the hard limit lies beyond the
+  actuation point, so the window cannot travel past the sensor and go quiet.
+  It was briefly mis-read as a rig fault; see `docs/gotcha-log.md`. The
+  consequence for the product is real, though: FR-WP07 is **conditional**,
+  because a narrow sensor zone on a real window would let bit 3 read *not at a
+  stop* with the window fully closed.
 
 ## 2. Control logic
 

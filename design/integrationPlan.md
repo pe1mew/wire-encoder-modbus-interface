@@ -5,7 +5,7 @@
 | Document | Product-firmware integration plan and results |
 | Project | `wire-encoder-modbus-interface` |
 | Date | 2026-07-28 |
-| Status | **Stages A–F complete** (skeleton, board bring-up, register image + persistence, and now the phase-1 encoder driver `we.c`, the measurement service `meas_open.c` and the averaging engine `avg.c`). All measurement registers are live, status reads 0x0000 on a healthy device, and the acceptance suite is green (8 passed). Remaining: the FR-MB07 categorisation decision, TP-A03/TP-B23 blocked on an adjustable PSU, and Group C's stage-D-dependent rows now unblocked but not yet all run. |
+| Status | **Stages A–F complete.** Board bring-up, register image + persistence, the encoder driver `we.c`, the measurement service `meas_open.c`, the averaging engine `avg.c` and the sensing-health checks `health.c`. All measurement registers are live, a healthy device reports status `0x0000`, and the acceptance suite is green (**11 tests**; 7 run with no hardware, 4 need the ADALM2000 and skip without it). Groups B and C are executed and passing. Remaining work is blocked on **instruments, not code**: an adjustable PSU (TP-A03/TP-B23), a PCB (TP-B36), a precision resistance box (FR-E03) and a 5 ms bounce injector (FR-E15). The FR-MB07 categorisation decision is **taken** — it is on NFR-TST01's exception list. |
 | Related docs | `design/TDS.md` v0.3, `design/softwareArchitecture.md`, `design/driverDevelopment.md`, `software/hil/README.md` |
 
 ## 1. Purpose
@@ -119,10 +119,10 @@ plus the measurement rows. Populates `software/hil/testReport.md`.
 
 | Quantity | Ceiling | Current | Note |
 |---|---|---|---|
-| Flash | 14 336 B (NFR-RES01) | 3 568 B *(skeleton)* | Record per release in `softwareArchitecture.md` §5 |
-| RAM | 1 792 B (NFR-RES01) | 616 B *(skeleton)* | Averaging blocks are the largest planned addition (~384 B) |
+| Flash | 14 336 B (NFR-RES01) | **6 364 B (44.4 %)** | Record per release in `softwareArchitecture.md` §5 |
+| RAM | 1 792 B (NFR-RES01) | **1 108 B (61.8 %)** | `avg.c`'s ring is ~384 B of this; ~684 B headroom left |
 | Response latency | 100 ms hard / 15 ms typical (FR-MB20/21) | not measured here | Sibling project: 4.12 ms median through a MAX3485 |
-| ADC burst per window | ≪ 1 ms | not measured | 16 conversions at ≥71 cycles; nothing else in this loop blocks |
+| ADC burst per window | ≪ 1 ms | ~0.34 ms | 16 conversions at 241 cycles, ~21 µs each (FR-E12/FR-E13) |
 
 ## 6. Risks & watch items
 
