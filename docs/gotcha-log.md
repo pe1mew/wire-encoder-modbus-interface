@@ -337,6 +337,46 @@ the bench, which made the whole requirement feel nearly closed.
 ratios**, and the two halves are recorded separately so the passing half cannot
 be mistaken for the whole.
 
+### A client recommendation derived from the arithmetic, not the requirement (2026-09-05)
+
+**Problem**: The interface contract's §8 recommended **40002 = 1000** for the
+target window, derived correctly from resolution arithmetic (at 12.5 mm/s a
+100 ms window moves the leaf under one ADC count). It was wrong anyway:
+**FR-WP08** asks for a *fresh value at every 1 Hz read*, and a window equal to
+the poll period can alias — two polls in one window, the same value twice. The
+right answer is 500 for a 1 Hz poll. Caught only on the next pass, while
+annotating the compliance study, which still said "at 1000 ms consecutive polls
+may repeat" in plain words.
+
+**Root cause**: The same failure as the FR-E12 header — reasoning from a
+*derived* quantity (resolution) while the governing requirement (freshness)
+sat unread one document over. The arithmetic was a copy of part of the
+requirement and had drifted from the rest of it.
+
+**Fix**: 40002 = 500 for a 1 Hz poll, 1000 for ≤0.5 Hz, in the contract, the
+compliance annotation and the changelog. Rule: **a recommended setting must
+cite the requirement that constrains it, not only the arithmetic that sizes
+it.** If the citation is missing, the requirement has not been read.
+
+### "Committed" that had not committed (2026-09-05)
+
+**Problem**: The user reported the contract spec committed. It was not: the
+suggested `git commit -F - <<'EOF'` here-doc never ran in whatever executes
+the Run button, and the file sat in the working tree. Noticed only because
+`git status` showed it as **`A`** (added, not in HEAD) when I re-staged it —
+one commit later than it should have been. Separately, every multi-`-m`
+message this week was flattened into one subject line containing a literal
+`" -m "`.
+
+**Root cause**: Suggested commit commands assumed a POSIX shell with here-doc
+and multi-argument support; the user's runner has neither. "Committed" was a
+report of an action taken, not of an outcome observed.
+
+**Fix**: Suggest **single-line `-m` messages only**. And **after every
+hand-off, `git log -1 --stat` before building on the assumption that the
+commit exists** — thirty seconds against a lost file. Recorded in the memory
+index so the next session does not re-learn it.
+
 ## Promoted patterns
 
 Recurrences that have earned a standing rule.
@@ -416,6 +456,21 @@ for four rows, and a **mis-citing row satisfies a traceability check while
 testing something else** — FR-S02 looked covered until the row citing it was
 deleted. "Is every requirement cited?" is a weaker question than "does the row
 exercise what it cites?", and only the second one is worth the name.
+
+**Recurred twice on 2026-09-05**, four days after promotion:
+
+- The "≥71 cycles" figure was still quoted as current in **five documents** —
+  the TDS itself twice, and a `driverDevelopment.md` test-matrix row that would
+  have *passed* the wrong driver. Fixing the header fixed one copy of many.
+- The client contract recommended **40002 = 1000** from resolution arithmetic
+  that was itself correct, while FR-WP08's freshness clause — *fresh at every
+  1 Hz read* — sat unread and required 500. The copy that drifted this time was
+  in my own reasoning, not a file.
+
+Two extensions to the rule follow. **A stale number has siblings: when one
+copy is found wrong, grep for the value, not the file.** And **a recommended
+setting must cite the requirement that constrains it, not only the arithmetic
+that sizes it** — an uncited recommendation is a copy without an original.
 
 ### If a measurement does not fit the model, suspect the rig before refitting
 
