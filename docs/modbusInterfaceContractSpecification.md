@@ -151,7 +151,8 @@ staleness purely by configuring 40002.
 | 40002 | Update rate | Max age of 30001 | Use |
 |---|---|---|---|
 | 100 | 10 Hz | 100 ms | only for a fast actuator. On the target window the leaf moves <1 ADC count per update at this rate (§8.1) |
-| **1000** (default) | 1 Hz | 1 s | **the target window** — 12.5 mm of staleness on a 1.5 m stroke, 0.83 % |
+| **500** | 2 Hz | 500 ms | **the target window, polled at 1 Hz** — fresh every poll (FR-WP08), 6.25 mm of staleness on a 1.5 m stroke, 0.42 % |
+| 1000 (default) | 1 Hz | 1 s | the target window polled at ≤0.5 Hz — 12.5 mm, 0.83 % |
 | 5000 | 0.2 Hz | 5 s | slow logging |
 
 One exception: during the 2 s fault-hold grace after a wiper fault (§7.1), the
@@ -457,7 +458,7 @@ answers within 1 s of rail recovery (FR-S22).
 
 | Register | Set it for | Constraint | Recommended for M3 |
 |---|---|---|---|
-| 40002 | Update rate / freshness bound (§4.2) | 100–60000 ms; `40003 × 1000 ≥ 40002` | **1000** — see §8.1; 100 buys nothing on this window |
+| 40002 | Update rate / freshness bound (§4.2) | 100–60000 ms; `40003 × 1000 ≥ 40002` | **500** for a 1 Hz poll (FR-WP08 needs the window shorter than the poll period); **1000** if polling at ≤0.5 Hz. 100 buys nothing on this window — §8.1 |
 | 40003 | Averaging span for 30002–30004 | 1–600 s; same rule | **1–2** (a 1 s mean satisfies FR-WP09 and FR-WP21) |
 | 40001 | Offset at the closed point | 0–65534 | 0 |
 | 40004 | Full travel | 1–65534, 0.1 mm | **15000** (1.5 m, the target window) |
@@ -479,16 +480,23 @@ from that one figure; a faster or slower window re-derives it the same way.
 | Max staleness at 40002 = 1000 (FR-E17) | 12.5 mm = 0.83 % of stroke | inside FR-WP04's 1 % resolution ask — a 1 s window is *not* the limiting factor |
 | Full traverse | 120 s = **120 windows** at 1 s | FR-E23's "away ≥ 2 windows" and FR-E24's "≥ 2 windows" are met 60× over; **a teach (§6) takes at least two full traverses, ≈4 minutes** |
 
-**So: 40002 = 1000.** On a 2-minute window a 100 ms window costs ten times the
-bus traffic for position updates that differ by less than one ADC count, and it
-destroys the rate register. Going the other way, 2000 is also defensible if the
-controller polls at ≤0.5 Hz; the freshness bound is still under 2 % of stroke.
+| Movement per update, 40002 = 500 | 6.25 mm ≈ 3.4 counts | position resolves each update; 30012 to ≈±37, about 30 % of the true rate |
+
+**So: 40002 = 500 for a 1 Hz poll, 1000 for slower polling.** FR-WP08 asks
+for a fresh value at *every* 1 Hz read, and a window equal to the poll period
+can alias — two consecutive polls landing in the same window and repeating a
+value. 500 ms is the shortest window that both guarantees a fresh value per
+1 Hz poll *and* still moves the leaf several counts per update. Below it, a
+100 ms window costs ten times the bus traffic for position updates that differ
+by less than one ADC count, and it destroys the rate register. If the
+controller polls at ≤0.5 Hz, 1000 is the right value and 2000 is still
+defensible; the freshness bound stays under 2 % of stroke.
 
 **FR-WP20's threshold needs correcting for this window.** The study's
 plausibility rule rejects jumps above **0.58 %/s**. This window's *normal*
 speed is **0.83 %/s** — the rule as written would reject the window's own
 motion. The controller must set its threshold above the real speed with margin:
-with 30012 at ±125 nominal and ±18 of quantisation at 40002 = 1000, a limit of
+with 30012 at ±125 nominal and ±37 of quantisation at 40002 = 500, a limit of
 **|30012| > 250** (twice the nominal speed, 25 mm/s) rejects genuine jumps and
 never the actuator. §4.6 is updated to match.
 
@@ -550,8 +558,8 @@ Arm teach                      Abort teach
 Set a 1 s average
   → 28 06 00 02 00 01  EE 33
 
-Manual calibration in one atomic write: 40004 = 20000, 40005 = 100, 40006 = 800
-  → 28 10 00 03 00 03 06  4E 20  00 64  03 20  BA F8
+Manual calibration in one atomic write: 40004 = 15000, 40005 = 100, 40006 = 800
+  → 28 10 00 03 00 03 06  3A 98  00 64  03 20  10 57
   ← 28 10 00 03 00 03  77 F1
 
 A refused write (e.g. 40002 = 65000, or a pair violating FR-E06)

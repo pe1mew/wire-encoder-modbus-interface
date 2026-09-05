@@ -277,7 +277,9 @@ evidence in [`software/hil/testReport.md`](software/hil/testReport.md).
 - **§8 sized to the target window: 1.5 m in ≈2 minutes = 12.5 mm/s.** At that
   speed a 100 ms measurement window moves the leaf less than one ADC count per
   update and quantises the rate register into steps larger than the speed it
-  measures; **40002 = 1000** is the recommendation, with the arithmetic shown.
+  measures; **40002 = 500 for a 1 Hz poll** (FR-WP08 needs the window shorter
+  than the poll period, or consecutive polls can repeat a value), 1000 for
+  slower polling, with the arithmetic shown.
   **Finding:** the compliance study's FR-WP20 jump-rejection threshold of
   0.58 %/s is *below* this window's normal speed of 0.83 %/s and would reject
   its own motion. The contract sets the controller's limit at |30012| > 250
