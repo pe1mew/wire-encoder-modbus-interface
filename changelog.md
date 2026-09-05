@@ -263,6 +263,28 @@ evidence in [`software/hil/testReport.md`](software/hil/testReport.md).
   fully-closed sits at an electrical extreme, a shorted conductor reads exactly
   like a correctly closed window and no firmware can separate them.
 
+### Added — client interface contract (2026-09-05)
+
+- **`docs/modbusInterfaceContractSpecification.md`** — the greenhouse
+  controller's contract with this device, organised by purpose: polling for the
+  opening, end switches, teaching, alarms versus health. Every statement cites
+  the TDS requirement it derives from; worked frames carry CRCs computed with
+  the project's codec. Two facts in it come from the implementation rather than
+  the TDS: the teach commit waits for the controller to **read** both captured
+  endpoints, so the ordinary full-map FC04 poll completes a teach with no extra
+  traffic; and a capture is filed to the closed or open register by **direction
+  of travel**, so a teach must be done with movement.
+- **§8 sized to the target window: 1.5 m in ≈2 minutes = 12.5 mm/s.** At that
+  speed a 100 ms measurement window moves the leaf less than one ADC count per
+  update and quantises the rate register into steps larger than the speed it
+  measures; **40002 = 1000** is the recommendation, with the arithmetic shown.
+  **Finding:** the compliance study's FR-WP20 jump-rejection threshold of
+  0.58 %/s is *below* this window's normal speed of 0.83 %/s and would reject
+  its own motion. The contract sets the controller's limit at |30012| > 250
+  instead. The study's 2 m stroke and 40004 = 20000 are likewise superseded by
+  the actual 1.5 m window; `requirementsCompliance.md` still carries the
+  study's figures and is not edited, since it records the study as received.
+
 ### Hardware decisions
 
 - **End switches: LJ18A3-8-Z/BX inductive proximity sensors** (2026-07-29).
