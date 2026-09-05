@@ -277,7 +277,7 @@ is exactly what to re-derive after a part change.
 
 ---
 
-### Divergent library copy nearly lost two footprints (2026-08-07)
+### [RESOLVED] Divergent library copy nearly lost two footprints (2026-08-07)
 **Problem**: `hardware/KiCad/<project>/my-KiCad-library/` looked like a
 duplicate of the submodule one level up and was a candidate for `.gitignore`.
 **Root cause**: It was *ahead* of the submodule — `DB207-DIP-4` and
@@ -290,7 +290,7 @@ diffing it first.
 
 ---
 
-### KiCad edits that look right and net wrong (2026-08-07)
+### [RESOLVED] KiCad edits that look right and net wrong (2026-08-07)
 **Problem**: Renaming a net label to move R5 from 3V3 to GND shorted the two
 rails. Separately, a new wire overlapped a pre-existing GND run while carrying
 a `3V3` label.
