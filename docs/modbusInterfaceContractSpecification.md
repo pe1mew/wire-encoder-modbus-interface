@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Document | Client-facing interface contract for the wire-encoder window-opening sensor |
-| Version | 1.1 (2026-09-05 — §8 re-derived for the target window: 1.5 m in ≈2 min; FR-WP20 threshold corrected) |
+| Version | 1.2 (2026-09-05 — §8 re-derived for the target window: 1.5 m in **171 s**, the M3 travel time; FR-WP20 threshold given margin) |
 | Audience | The **greenhouse controller** (Modbus master) — its firmware author and its integrator |
 | Derived from | `design/TDS.md` **v0.7**, which is normative. Every statement here cites the requirement it comes from; where the two disagree, the TDS wins and this document is wrong |
 | Firmware | Build type `0x01`, version 1 — read it from register 30007 before trusting anything below |
@@ -151,8 +151,8 @@ staleness purely by configuring 40002.
 | 40002 | Update rate | Max age of 30001 | Use |
 |---|---|---|---|
 | 100 | 10 Hz | 100 ms | only for a fast actuator. On the target window the leaf moves <1 ADC count per update at this rate (§8.1) |
-| **500** | 2 Hz | 500 ms | **the target window, polled at 1 Hz** — fresh every poll (FR-WP08), 6.25 mm of staleness on a 1.5 m stroke, 0.42 % |
-| 1000 (default) | 1 Hz | 1 s | the target window polled at ≤0.5 Hz — 12.5 mm, 0.83 % |
+| **500** | 2 Hz | 500 ms | **the target window, polled at 1 Hz** — fresh every poll (FR-WP08), 4.4 mm of staleness on a 1.5 m stroke, 0.29 % |
+| 1000 (default) | 1 Hz | 1 s | the target window polled at ≤0.5 Hz — 8.8 mm, 0.58 % |
 | 5000 | 0.2 Hz | 5 s | slow logging |
 
 One exception: during the 2 s fault-hold grace after a wiper fault (§7.1), the
@@ -200,11 +200,13 @@ The controller's jump-rejection rule is supported directly by 30012: any
 computed from the last two completed windows, so it needs two windows of
 movement before it is valid.
 
-**Do not use the study's 0.58 %/s figure as written.** The target window moves
-1.5 m in ≈2 min = 12.5 mm/s = **0.83 %/s** — faster than the study's threshold,
-which would therefore reject the window's own normal travel. 30012 reads
-**±125** during a healthy traverse. Set the limit at **|30012| > 250** (25 mm/s,
-twice nominal); the arithmetic is in §8.1.
+**Do not use the study's 0.58 %/s figure as the limit itself.** It *is* this
+window's normal speed: 1.5 m in 171 s = 8.77 mm/s = **0.585 %/s**. A limit
+placed at nominal has zero margin — the first quantisation step or a slightly
+brisk actuator trips it. 30012 reads **±88** during a healthy traverse (±37 of
+quantisation at 40002 = 500, so up to ±125 on a legitimate reading). Set the
+limit at **|30012| > 175** (17.5 mm/s, twice nominal); the arithmetic is in
+§8.1.
 
 ---
 
@@ -365,7 +367,7 @@ assumed 2 m; the window actually being fitted is 1.5 m. Measure the real
 sensor-to-sensor distance and write *that* — the round figure is a placeholder.
 
 **Allow time.** A teach needs the window driven to both stops, and on this
-window each traverse is ≈2 minutes. Budget **≈4–5 minutes** from arm to bit 5
+window each traverse is **171 s**. Budget **≈6–7 minutes** from arm to bit 5
 clearing, and do not abort early because nothing seems to be happening — bit 5
 stays set throughout, and the captures land only as each sensor makes.
 
@@ -466,21 +468,23 @@ answers within 1 s of rail recovery (FR-S22).
 
 ### 8.1 Sizing 40002 to the window's speed — the numbers behind the recommendation
 
-The target window takes **about 2 minutes to open or close fully over 1.5 m**:
-**12.5 mm/s**, or 0.83 % of stroke per second. Everything in this table follows
+The target window — the M3 — takes **171 s to open or close fully over 1.5 m**:
+**8.77 mm/s**, or 0.585 % of stroke per second. Everything in this table follows
 from that one figure; a faster or slower window re-derives it the same way.
+(An earlier draft used "≈2 minutes"; the exact travel time changes the numbers
+below by about 30 % and the FR-WP20 conclusion in kind, so use 171 s.)
 
 | Quantity | Value | Consequence |
 |---|---|---|
-| Speed | 12.5 mm/s | 30012 reads **±125** during normal travel |
-| Resolution (§7.3 headroom, ~80 % of range used) | ≈1.8 mm / count | the raw code advances ≈**7 counts per second** |
-| Movement per update, 40002 = 100 | 1.25 mm ≈ **0.7 count** | the position does not visibly change between consecutive updates; 30012 is quantised to steps of ≈180 — **larger than the speed it is measuring** — and is useless |
-| Movement per update, 40002 = 1000 | 12.5 mm ≈ 7 counts | position resolves each update; 30012 resolves to ≈±18, about 15 % of the true rate |
-| Movement per update, 40002 = 2000 | 25 mm ≈ 14 counts | 30012 to ≈±9; freshness bound 25 mm = 1.7 % of stroke |
-| Max staleness at 40002 = 1000 (FR-E17) | 12.5 mm = 0.83 % of stroke | inside FR-WP04's 1 % resolution ask — a 1 s window is *not* the limiting factor |
-| Full traverse | 120 s = **120 windows** at 1 s | FR-E23's "away ≥ 2 windows" and FR-E24's "≥ 2 windows" are met 60× over; **a teach (§6) takes at least two full traverses, ≈4 minutes** |
+| Speed | 8.77 mm/s | 30012 reads **±88** during normal travel |
+| Resolution (§7.3 headroom, ~80 % of range used) | ≈1.8 mm / count | the raw code advances ≈**4.8 counts per second** |
+| Movement per update, 40002 = 100 | 0.88 mm ≈ **0.5 count** | the position changes on roughly every other update; 30012 is quantised to steps of ≈180 — **twice the speed it is measuring** — and is useless |
+| Movement per update, 40002 = 1000 | 8.8 mm ≈ 4.8 counts | position resolves each update; 30012 resolves to ≈±18, about 20 % of the true rate |
+| Movement per update, 40002 = 2000 | 17.5 mm ≈ 9.6 counts | 30012 to ≈±9; freshness bound 17.5 mm = 1.2 % of stroke |
+| Max staleness at 40002 = 1000 (FR-E17) | 8.8 mm = 0.58 % of stroke | inside FR-WP04's 1 % resolution ask — a 1 s window is *not* the limiting factor |
+| Full traverse | 171 s = **171 windows** at 1 s | FR-E23's "away ≥ 2 windows" and FR-E24's "≥ 2 windows" are met 85× over; **a teach (§6) takes at least two full traverses, ≈6 minutes** |
 
-| Movement per update, 40002 = 500 | 6.25 mm ≈ 3.4 counts | position resolves each update; 30012 to ≈±37, about 30 % of the true rate |
+| Movement per update, 40002 = 500 | 4.4 mm ≈ 2.4 counts | position resolves each update; 30012 to ≈±37, about 40 % of the true rate |
 
 **So: 40002 = 500 for a 1 Hz poll, 1000 for slower polling.** FR-WP08 asks
 for a fresh value at *every* 1 Hz read, and a window equal to the poll period
@@ -492,13 +496,14 @@ by less than one ADC count, and it destroys the rate register. If the
 controller polls at ≤0.5 Hz, 1000 is the right value and 2000 is still
 defensible; the freshness bound stays under 2 % of stroke.
 
-**FR-WP20's threshold needs correcting for this window.** The study's
-plausibility rule rejects jumps above **0.58 %/s**. This window's *normal*
-speed is **0.83 %/s** — the rule as written would reject the window's own
-motion. The controller must set its threshold above the real speed with margin:
-with 30012 at ±125 nominal and ±37 of quantisation at 40002 = 500, a limit of
-**|30012| > 250** (twice the nominal speed, 25 mm/s) rejects genuine jumps and
-never the actuator. §4.6 is updated to match.
+**FR-WP20's threshold needs margin, not a different basis.** The study's
+plausibility rule rejects jumps above **0.58 %/s** — and 0.585 %/s is this
+window's *normal* speed, so the study's figure was evidently derived from the
+171 s travel time. Used directly as the limit it has **zero margin**: a healthy
+reading of 88 ± 37 quantisation reaches 125 and would be rejected. The
+controller must set its threshold above nominal with margin: **|30012| > 175**
+(twice the nominal speed, 17.5 mm/s) rejects genuine jumps and never the
+actuator. §4.6 is updated to match.
 
 Two cross-register rules, both enforced atomically (exception 03, nothing
 changes):

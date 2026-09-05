@@ -340,7 +340,7 @@ be mistaken for the whole.
 ### A client recommendation derived from the arithmetic, not the requirement (2026-09-05)
 
 **Problem**: The interface contract's §8 recommended **40002 = 1000** for the
-target window, derived correctly from resolution arithmetic (at 12.5 mm/s a
+target window, derived correctly from resolution arithmetic (at ≈9 mm/s a
 100 ms window moves the leaf under one ADC count). It was wrong anyway:
 **FR-WP08** asks for a *fresh value at every 1 Hz read*, and a window equal to
 the poll period can alias — two polls in one window, the same value twice. The
@@ -376,6 +376,29 @@ report of an action taken, not of an outcome observed.
 hand-off, `git log -1 --stat` before building on the assumption that the
 commit exists** — thirty seconds against a lost file. Recorded in the memory
 index so the next session does not re-learn it.
+
+### A source document declared wrong on an approximate input (2026-09-05)
+
+**Problem**: Given "approximately 2 minutes" for the window's travel, I
+computed 0.83 %/s, found the compliance study's FR-WP20 threshold of 0.58 %/s
+*below* it, and wrote up — in the contract, the compliance annotations, the
+changelog and the memory index — that the study's number would reject the
+window's own motion. The exact travel time is **171 s**: 0.585 %/s, which is
+the study's figure to three digits. The study had it right; it was derived from
+the real number.
+
+**Root cause**: A conclusion that hinged on a 30 % difference was built on an
+input given with a "≈" in front of it. The gap between 0.83 and 0.58 was
+inside the error of "about 2 minutes", and I did not ask before declaring
+someone else's document wrong.
+
+**Fix**: Re-derived everything from 171 s. The finding survives in a weaker
+and more useful form — the study's figure is *nominal speed*, so a limit needs
+a factor on top (|30012| > 175). Rule: **when a conclusion says a source is
+wrong, and the input it rests on carries an "approximately", get the exact
+figure before writing the conclusion anywhere.** And when a study's number
+lands *near* your derived one, the first hypothesis is that it was derived
+from the same physical fact, not that it is mistaken.
 
 ## Promoted patterns
 

@@ -7,7 +7,7 @@
 | Date | 2026-07-28 |
 | Checked against | `greenhouse-Controller/design/windowPositionSensorRequirements.MD`, dated 2026-07-28 (marked PRELIMINARY STUDY — not adopted) |
 | This design | `design/TDS.md` **v0.7**, `design/description.md` |
-| Status | Updated through TDS v0.7. The two gaps this analysis originally raised are both closed; what remains is listed in §4. **Annotated 2026-09-05 with the target window's actual figures — 1.5 m stroke, ≈2 minutes to open or close (12.5 mm/s, 0.83 %/s).** The study assumed 2 m and a slower actuator; every figure derived from those is re-derived below in a *"1.5 m:"* note, with the study's original left in place. One consequence is material: the study's own FR-WP20 threshold is **below this window's normal speed**. |
+| Status | Updated through TDS v0.7. The two gaps this analysis originally raised are both closed; what remains is listed in §4. **Annotated 2026-09-05 with the target window's actual figures — 1.5 m stroke, 171 s to open or close, the M3 travel time (8.77 mm/s, 0.585 %/s).** The study assumed a 2 m stroke; every figure derived from it is re-derived below in a *"1.5 m:"* note, with the study's original left in place. The study's 0.58 %/s in FR-WP20 turns out to be this window's *nominal* speed, so it cannot be used as a rejection limit without margin. |
 
 ---
 
@@ -66,7 +66,7 @@ ceiling that used to keep it company is closed.
 
 | ID | Req | Verdict | Evidence / note |
 |---|---|---|---|
-| FR-WP08 | ≥1 Hz, **fresh** value each read | ✅ **Met — now an explicit contract** | **FR-E17**: the value in 30001 is never older than the configured measurement window. "Fresh" is therefore a number the master sets, not a hope. It **defaults to 1000 ms**, so 40002 must be set to 100–200 ms at commissioning for this application — see §3. With 200 ms the worst-case staleness is 2.3 mm, 0.12 % of the 2 m stroke. *1.5 m at 12.5 mm/s: 200 ms → 2.5 mm (0.17 %); **500 ms → 6.25 mm (0.42 %)**; 1000 ms → 12.5 mm (0.83 %). The literal "fresh at every 1 Hz read" needs 40002 shorter than the poll period, so 500 ms for a 1 Hz poll; going below that moves the leaf less than one ADC count per update and gains nothing — see §3* |
+| FR-WP08 | ≥1 Hz, **fresh** value each read | ✅ **Met — now an explicit contract** | **FR-E17**: the value in 30001 is never older than the configured measurement window. "Fresh" is therefore a number the master sets, not a hope. It **defaults to 1000 ms**, so 40002 must be set to 100–200 ms at commissioning for this application — see §3. With 200 ms the worst-case staleness is 2.3 mm, 0.12 % of the 2 m stroke. *1.5 m at 8.77 mm/s: 200 ms → 1.8 mm (0.12 %); **500 ms → 4.4 mm (0.29 %)**; 1000 ms → 8.8 mm (0.58 %). The literal "fresh at every 1 Hz read" needs 40002 shorter than the poll period, so 500 ms for a 1 Hz poll; going below that moves the leaf less than one ADC count per update and gains nothing — see §3* |
 | FR-WP09 | Filtering ≤ ~1 s group delay, or configurable to it | ✅ **Met** | Two routes. (a) Read 30001 — instantaneous, no filtering beyond the measurement window. (b) Read 30002 with 40003 = 1 s: a 1 s boxcar, group delay ≈ 0.45 s. The FR-E13 16-conversion burst takes <1 ms and adds no meaningful delay |
 | FR-WP10 | Transaction ≤200 ms; ≤50 ms preferred | ✅ **Met with wide margin** | FR-MB20 hard limit 100 ms; FR-MB21 95 % within 15 ms. **Measured on this device (TP-B14/TP-B29, 2026-09-01): 4.08 ms median, 4.14 ms worst over 1000 requests, 100 % within 15 ms.** Timed from the DE edge on the wire, not from host round-trip. Essentially all of it is the mandatory t3.5 frame-boundary silence (4.01 ms); the firmware adds ~20 µs. The sibling project's 4.12 ms median on the same driver binary corroborates it |
 
@@ -75,14 +75,14 @@ counts per second**. Polling at 1 Hz therefore yields distinct, monotonic
 values throughout a 171 s stroke with comfortable margin — provided 40002 is
 short enough that each poll lands on a fresh window.
 
-*1.5 m, ≈2 min: 12.5 mm/s ≈ **7–8 counts per second** (8.5 over the full ADC
-range, ≈7 with §8.1 headroom), over a **120 s** stroke. The conclusion holds
-with more margin, not less. The corollary cuts the other way for the
-measurement window: at 100 ms the leaf moves ≈0.7 count per update, so
-consecutive updates are frequently identical and the rate register 30012
-quantises to steps of ≈180 — larger than the 125 it is trying to report.
-500 ms (≈3.4 counts/update, 30012 steps ≈37) is the shortest window that
-resolves both position and rate on this actuator.*
+*1.5 m, 171 s: 8.77 mm/s ≈ **5–6 counts per second** (6.0 over the full ADC
+range, ≈4.8 with §8.1 headroom), over the same 171 s stroke — the study's
+speed figure was right; only its stroke was not. The conclusion holds. The
+corollary cuts the other way for the measurement window: at 100 ms the leaf
+moves ≈0.5 count per update, so consecutive updates are identical about half
+the time and the rate register 30012 quantises to steps of ≈180 — twice the
+88 it is trying to report. 500 ms (≈2.4 counts/update, 30012 steps ≈37) is the
+shortest window that resolves both position and rate on this actuator.*
 
 ### 2.3 Modbus and electrical
 
@@ -121,7 +121,7 @@ rather than relying on the seal alone.
 | FR-WP17 | Controller falls back to time-based control | ➖ **Controller-side** | This device's contribution is making the failure unambiguous so the fallback can trigger |
 | FR-WP18 | Wind override must not depend on position | ➖ **Controller-side** | Nothing here creates such a dependency |
 | FR-WP19 | Fault surfaced to the operator | ➖ **Controller-side** | Status bits 2 and 4 are the raw material |
-| FR-WP20 | Reject implausible readings / jumps >0.58 %/s (Should) | ✅ **Directly supported** | 30012 reports the movement rate the device measured. 0.58 %/s of a 2 m stroke = 11.7 mm/s = **117** in the register's 0.1 mm/s units — a ready-made plausibility threshold. ***1.5 m, ≈2 min — the study's threshold is wrong for this window.** Its normal speed is 12.5 mm/s = **0.83 %/s**, above the 0.58 %/s the rule would reject, so applied as written it rejects the window's own motion. 30012 reads ±125 during a healthy traverse (±37 of quantisation at 40002 = 500). The controller's limit must sit above that with margin: **\|30012\| > 250** (25 mm/s, twice nominal) — `docs/modbusInterfaceContractSpecification.md` §4.6/§8.1. The study's figure presumably came from a slower assumed actuator (0.58 %/s is a 172 s stroke); the requirement's intent — reject jumps the actuator cannot produce — is met, its number is not* |
+| FR-WP20 | Reject implausible readings / jumps >0.58 %/s (Should) | ✅ **Directly supported** | 30012 reports the movement rate the device measured. 0.58 %/s of a 2 m stroke = 11.7 mm/s = **117** in the register's 0.1 mm/s units — a ready-made plausibility threshold. ***1.5 m, 171 s — the study's 0.58 %/s is this window's nominal speed, not a limit.** 1500 mm / 171 s = 8.77 mm/s = **0.585 %/s**, so the figure was clearly derived from the real travel time. Used directly as the rejection threshold it has zero margin: 30012 reads ±88 in a healthy traverse, plus ±37 of quantisation at 40002 = 500 — a legitimate reading of 125 would be rejected. On the 1.5 m stroke the study's own number is 87 in 30012 units (not the 117 computed above for 2 m). The controller's limit must sit above nominal with margin: **\|30012\| > 175** (17.5 mm/s, twice nominal) — `docs/modbusInterfaceContractSpecification.md` §4.6/§8.1. The requirement's intent — reject jumps the actuator cannot produce — is met; its number is the actuator's speed and needs a factor on top* |
 
 ---
 
@@ -132,7 +132,7 @@ meet FR-WP08**. For closed-loop M3 positioning:
 
 | Register | Default | Set to | Why |
 |---|---|---|---|
-| 40002 measurement window | 1000 ms | **100–200 ms** — *1.5 m: **500 ms** for a 1 Hz poll, 1000 if the controller polls at ≤0.5 Hz* | FR-WP08: a fresh value at every 1 Hz poll. At 1000 ms a poll can return a value up to a second old, and consecutive polls may repeat. *1.5 m, 12.5 mm/s: below 500 ms the leaf moves under one ADC count per update and 30012 quantises into steps larger than the speed itself (AT-WP04 note above); 100–200 ms buys traffic, not information* |
+| 40002 measurement window | 1000 ms | **100–200 ms** — *1.5 m: **500 ms** for a 1 Hz poll, 1000 if the controller polls at ≤0.5 Hz* | FR-WP08: a fresh value at every 1 Hz poll. At 1000 ms a poll can return a value up to a second old, and consecutive polls may repeat. *1.5 m, 8.77 mm/s: below 500 ms the leaf moves under one ADC count per update and 30012 quantises into steps larger than the speed itself (AT-WP04 note above); 100–200 ms buys traffic, not information* |
 | 40003 averaging window | 10 s | **1 s** | FR-WP09: caps group delay at ≈0.45 s. Only matters if the controller reads 30002; reading 30001 sidesteps filtering entirely |
 | 40004 full travel | 10000 (1000.0 mm) | **20000** (2000.0 mm) — *1.5 m: **15000**, then replace with the tape-measured sensor-to-sensor distance* | The measured M3 stroke. *The study's 2 m was an assumption; the window being fitted is 1.5 m. The value written must be the distance between the two end-sensor operating points, not the hard stops — a teach captures those points, and 40004 must match them* |
 | 40005 / 40006 raw calibration | 0 / 1023 | measured | The commissioning procedure in `description.md` §6 |
